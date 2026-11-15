@@ -1,4 +1,4 @@
-# SimpleCanvas — Project Notes
+# Paperwire — Project Notes
 
 Single-file HTML/CSS/JS canvas drawing app. Everything lives in `index.html` —
 no build step or external runtime fetches. The MQTT.js browser client is vendored inline;
@@ -117,7 +117,7 @@ The singleton Workspace settings component stays in the original sketch. Export/
 identity-remapping rules; missing external sources remain visibly broken rather than silently retargeted.
 
 PR #3 adds structured JSON plus PNG clipboard output, whole-workspace HTML export, and Markdown.
-Paste validates SimpleCanvas JSON before using the PNG fallback. HTML export reads working documents
+Paste validates Paperwire JSON before using the PNG fallback. HTML export reads working documents
 and passes each document's items/assets to SVG serialization; do not clear or swap the live asset pool.
 Painted export bounds cover plain text and Markdown separately from geometry/pivot bounds. Markdown
 requires an exact `---` first line in a text item; table cells are excluded in both renderer and editor.
@@ -165,9 +165,10 @@ verification. Historical branch notes below are background, not evidence of curr
 
 ## Provenance
 
-- Upstream: https://github.com/oldwired/simplecanvas (maintainer: oldwired)
-- This repo (`regattahero/simplecanvas`) is a fork with a large feature branch
-  built on top of oldwired's `main` (as of the "Bugfixes" commit, ~2575 lines).
+- Repository: https://github.com/oldwired/paperwire (maintainer: oldwired).
+- Paperwire starts from the former SimpleCanvas `feature/smart-components` branch.
+- Earlier development included a fork with a large feature branch built on top
+  of oldwired's original `main` (as of the "Bugfixes" commit, ~2575 lines).
 - The pull request with this branch's changes was merged into
   `oldwired/simplecanvas:main` (merge commit `672ce14`, "Merge pull request #1
   from regattahero/feature/toolbar-overhaul").
@@ -249,7 +250,7 @@ below remain useful, but are not instructions about the current branch or merge 
   Office's paste-special never picked it up as vector content anyway
   (showed an empty box), so `image/png` alone covers this now.
 - **HTML export** (`exportHtml()`, new menu item) — a standalone `.html`
-  file that opens in any browser, no SimpleCanvas needed. Reproduces the
+  file that opens in any browser, no Paperwire needed. Reproduces the
   canvas **1:1** at its current `cssW`×`cssH` viewport size (no auto-crop) —
   deliberately different from SVG export/copy, which still tight-crop to
   the items' own bbox + margin. `itemsToSVGMarkup(itemList, {width, height})`

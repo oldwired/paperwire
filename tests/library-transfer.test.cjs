@@ -226,7 +226,7 @@ test('invalid shape files and disabled authoring leave the active library and dr
     const before=await run('({library:shapeLibrary,items,dirty:shapeLibraryDirty})');
     const cases=[
       ['not-json','{unfinished',/not valid JSON/],
-      ['wrong-kind',{...valid,app:'SimpleCanvasShapeLibrary'},/not a SimpleCanvas shape/],
+      ['wrong-kind',{...valid,app:'SimpleCanvasShapeLibrary'},/not a Paperwire shape/],
       ['future-version',{...valid,version:2},/Unsupported shape file version/],
       ['invalid-object',envelope({name:'Broken',items:[{...box,type:'unknown'}]}),/Invalid object/]
     ];

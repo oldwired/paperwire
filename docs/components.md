@@ -1,6 +1,6 @@
 # Connected components
 
-[Back to SimpleCanvas](../README.md) · [Scripting API](../SMART_SHAPES.md) · [Design brief](smart-components-brief.md)
+[Back to Paperwire](../README.md) · [Scripting API](../SMART_SHAPES.md) · [Design brief](smart-components-brief.md)
 
 Open [the smart-components workspace](../examples/smart-components-workspace.json) with
 **File → Open workspace…** to explore thirty-eight connected examples. Opening a workspace replaces
@@ -440,7 +440,7 @@ Dataset also has a Boolean **reload** input. Connect a Trigger: each false → t
 last file accepted through **Load data…**, using its accepted delimiter. This works when the browser
 provides a reusable file handle, such as Chromium's file picker. Safari and ordinary file-input
 imports require choosing the updated file again through **Load data…**; the app explains this and
-keeps the accepted data. SimpleCanvas keeps file handles only in the current session and never stores or exports file
+keeps the accepted data. Paperwire keeps file handles only in the current session and never stores or exports file
 access. An initially high signal, opening a drawing, Undo, or reconnecting a wire does not reload
 a file. **Allow file import and reload** controls both loading and triggered reloading.
 
@@ -1251,7 +1251,7 @@ from a simulated device reply. Run `npm ci` once for the development tools, then
 `node tools/serve-mqtt-example.cjs` and open `http://127.0.0.1:8001/examples/mqtt-integrations.html`.
 The local helper supplies retained baselines and new readings once per second. It accepts only
 non-retained JSON commands with one numeric `value` from 0 through 100 on
-`simplecanvas/demo/command`, and sends a separate simulated device response on
-`simplecanvas/demo/reply`. Other client writes are refused. The client is bundled into self-contained
+`paperwire/demo/command`, and sends a separate simulated device response on
+`paperwire/demo/reply`. Other client writes are refused. The client is bundled into self-contained
 HTML; a live broker is still required. Credentials, origin checks and browser local-network rules
 apply in the editor, Run and exported reader. Explicitly saved offline reading snapshots remain deferred.

@@ -2741,15 +2741,15 @@ test('a custom deployment title is plain text and invalid titles do not partiall
   },{files:{'settings.json':JSON.stringify({version:1,title,features:{workspace:false}})}});
   for(const title of ['',42]){
     await app(async({page,run})=>{
-      assert.equal(await page.title(),'SimpleCanvas — Quick Sketches');
+      assert.equal(await page.title(),'Paperwire — Quick Sketches');
       assert.equal(await run('features.workspace'),true,'invalid settings never partially disable features');
       assert.equal(await page.locator('#settingsWarning').isVisible(),true);
     },{files:{'settings.json':JSON.stringify({title,features:{workspace:false}})}});
   }
 });
 
-test('the Really Simple deployment loads its own title and disables all optional features',async()=>app(async({page,run})=>{
-  assert.equal(await page.title(),'Really SimpleCanvas');
+test('deployment settings load a custom title and disable all optional features',async()=>app(async({page,run})=>{
+  assert.equal(await page.title(),'Custom drawing app');
   assert.equal(await run('Object.values(features).every(value=>value===false)'),true);
   assert.equal(await page.locator('#shapeLibWrap').isVisible(),false);
   assert.equal(await run('performance.getEntriesByType("resource").some(e=>e.name.endsWith("shapes-library.json"))'),false);
@@ -2760,9 +2760,9 @@ test('the Really Simple deployment loads its own title and disables all optional
   await page.mouse.move(canvas.x+100,canvas.y+100);await page.mouse.down();
   await page.mouse.move(canvas.x+260,canvas.y+200,{steps:5});await page.mouse.up();
   assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
-  await run('persistWorkspace()');await page.reload();await run('appReady');assert.equal(await page.title(),'Really SimpleCanvas');
+  await run('persistWorkspace()');await page.reload();await run('appReady');assert.equal(await page.title(),'Custom drawing app');
   assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
-},{origin:'http://simplecanvas.test/simplecanvas/reallysimple',files:{'settings.json':fs.readFileSync(path.join(__dirname,'..','reallysimple','settings.json'),'utf8')}}));
+},{origin:'http://paperwire.test/custom',files:{'settings.json':JSON.stringify({version:1,title:'Custom drawing app',features:{workspace:false,shapeLibrary:false,shapeLibraryManagement:false,smartShapeAuthoring:false,smartComponents:false,networkIntegrations:false,iconify:false,customPrinting:false}})}}));
 
 test('workspace settings preserve saved tabs, restrict exports to the active sketch, and retain recovery',async()=>app(async({page,run})=>{
   const first=await run(`applySketchToActiveTab([{...${JSON.stringify(rectangle('background'))},fillColor:'#ef4444'}],{});activeTabId`);
@@ -2891,7 +2891,7 @@ test('settings resolve before input, document restoration, or library loading',a
   await page.route('**/settings.json',async route=>{started();await pending;await route.fulfill({contentType:'application/json',body:JSON.stringify({title:'Delayed deployment title',features:{workspace:false,shapeLibrary:false}})});});
   await run('persistWorkspace()');await page.reload({waitUntil:'domcontentloaded'});await requested;
   assert.equal(await page.evaluate(()=>document.body.inert),true);
-  assert.equal(await page.title(),'SimpleCanvas — Quick Sketches','document load does not imply asynchronous settings are ready');
+  assert.equal(await page.title(),'Paperwire — Quick Sketches','document load does not imply asynchronous settings are ready');
   assert.equal(await page.evaluate(()=>__test.run('activeTabId')),null);
   await page.keyboard.press('r');assert.equal(await page.evaluate(()=>__test.run('ui.tool')),'pen');
   finish();await run('appReady');
@@ -3025,7 +3025,7 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
   await run('persistWorkspace()');await page.reload();
   assert.equal(await run('items[4].state.m'),15,'edited demo shapes survive autosave/reload');
   assert.deepEqual(await run('items[5].state.values'),[30,60,45,80]);
-}, {origin:'http://simplecanvas.test/simplecanvas',files:{'shapes-library.json':demoLibrary},init:()=>{
+}, {origin:'http://simplecanvas.test/paperwire',files:{'shapes-library.json':demoLibrary},init:()=>{
   const NativeWorker=window.Worker;
   window.__smartWorkerStarts=0;
   window.Worker=class extends NativeWorker{constructor(...args){super(...args);window.__smartWorkerStarts++;}};

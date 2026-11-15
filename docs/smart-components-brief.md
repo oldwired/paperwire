@@ -72,19 +72,19 @@ The current main example has 38 sketches; the separate three-sketch
 cross-sketch Publish/Receive, and shared dataset editing. The counts above describe how the main
 example grew during each delivered milestone. The later review sections record the current
 runtime, storage, export, and validation follow-up.
-Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
-For the maintainer and contributors deciding how far SimpleCanvas should grow.
+Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/paperwire/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
+For the maintainer and contributors deciding how far Paperwire should grow.
 
 ## Direction
 
-SimpleCanvas already creates portable interactive documents. An HTML export contains its
+Paperwire already creates portable interactive documents. An HTML export contains its
 visuals, smart-shape scripts, saved state, and an isolated runtime; readers can use it offline.
 On the feature branch, connected shapes exchange scalar values and table references, and a categorized browser makes
 components easy to find, place, and combine. Embedded datasets support offline data tools and explicit result downloads.
 
 The proposed direction is a visual authoring tool for small, self-contained interactive
 HTML documents. Preserve the ordinary drawing workflow and make component authoring optional.
-The existing deployment switches and Really SimpleCanvas variant provide a way to offer
+The existing deployment switches provide a way to offer
 simpler interfaces without maintaining a separate application.
 
 The first milestone is **one numeric control driving a separate gauge,
@@ -100,7 +100,7 @@ The [smart-components workspace](../examples/smart-components-workspace.json) an
 ## Current baseline: main and the feature branch
 
 The smart-shape work originally discussed as PR #5 landed through the sandboxed
-[PR #7](https://github.com/oldwired/simplecanvas/pull/7) and subsequent integration fixes.
+historical PR #7 and subsequent integration fixes.
 Live shapes and interactive HTML followed on October 15.
 The table distinguishes those main-branch foundations from the additions on `feature/smart-components`.
 
@@ -116,7 +116,7 @@ The table distinguishes those main-branch foundations from the additions on `fea
 | Author and reader controls | `editorOnly` removes marked visuals and handles from exports. `exportBehavior` independently permits moving, rotating, and resizing either dimension; the default layout stays fixed. |
 | Library authoring | Existing library scripts can be edited and their previews regenerated. Each new placement initializes independently. Already-placed instances retain their own script and state. |
 | Library previews | Bundled PNG previews display without executing scripts. Missing imported smart previews use placeholders and require approval before generation; authoring a definition already authorizes its preview. Placement still runs hooks in the sandbox. |
-| Deployment variants | Settings can disable authoring, library management, workspace controls, and other features. Fixed libraries remain usable, and Really SimpleCanvas disables all optional features. |
+| Deployment variants | Settings can disable authoring, library management, workspace controls, and other features. Fixed libraries remain usable, and deployments can disable all optional features. |
 | Component authoring switch — feature branch | `features.smartComponents:false` hides component templates, source editing, and Edit, and blocks adding component library entries. Existing drawings, copies, deployed-library placements, and HTML exports keep working. This switch depends on `smartShapeAuthoring`; it does not disable execution. |
 | Library browser — feature branch | The compact Working collection shows pinned shortcuts. An optional adjacent browser provides search, multiple category memberships, a Built-in/My shapes Source filter, and direct placement. Shared Library actions manage entries and category tags; format 2 preserves IDs, metadata, category organization, and pins. |
 | Practical examples | Live clock, stopwatch, chart, ruler, drilling template, and sailing shapes exercise timing, stateful controls, and physical units. Actual-size and tiled printing support physical templates. |
@@ -432,8 +432,7 @@ for a built-in snapshot. **Import library…** replaces the user library; indivi
 Single-shape export does not clear the whole library’s unexported-change indicator. Transfers retain
 existing authoring guards and script-preview consent; successful imports join browser persistence.
 
-The library and authoring deployment switches still apply, including `smartComponents` and the
-Really SimpleCanvas variant. A fixed deployed library remains placeable when component authoring
+The library and authoring deployment switches still apply, including `smartComponents`. A fixed deployed library remains placeable when component authoring
 is disabled. Exported documents carry the definitions they use and remain independent of the
 author's library. Personal library persistence is an improvement to the existing library workflow;
 it does not advance phases 3–6 or add shared definitions between placed instances.
@@ -3020,7 +3019,7 @@ numeric/JSON and text subscribers, a Gauge, a status label and a fresh-message M
 sketch selects that same Config for another view. **Commands & replies** connects Number control →
 JSON build → MQTT Publish, then shows a separate reply subscription, Gauge and Memo logs for broker
 receipt, device response and failures. Its broker permits only non-retained `{"value":0–100}`
-commands on `simplecanvas/demo/command` and simulates replies on `simplecanvas/demo/reply`.
+commands on `paperwire/demo/command` and simulates replies on `paperwire/demo/reply`.
 Other client publications are rejected. A local development helper,
 `node tools/serve-mqtt-example.cjs`, serves the editor/reader and a broker at
 `ws://127.0.0.1:8001/mqtt`, with retained baselines and a new reading/status every second.

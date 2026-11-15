@@ -1,4 +1,4 @@
-// Build a separate small application example, then export it through SimpleCanvas itself.
+// Build a separate small application example, then export it through Paperwire itself.
 // Run: node tools/update-workspace-runtime-example.cjs
 const fs=require('node:fs');
 const path=require('node:path');

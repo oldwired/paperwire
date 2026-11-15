@@ -1,4 +1,4 @@
-// Build a small HTTP application example and export it through SimpleCanvas itself.
+// Build a small HTTP application example and export it through Paperwire itself.
 // Serve the repository root over HTTP(S), then open examples/http-integrations.html.
 const fs=require('node:fs');
 const path=require('node:path');

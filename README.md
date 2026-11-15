@@ -1,11 +1,13 @@
-# SimpleCanvas
+# Paperwire
 
-A self-contained browser sketching canvas. Open `index.html` directly; no build step or runtime
+A self-contained visual authoring tool for interactive documents, connected components, and sketches. Open `index.html` directly; no build step or runtime
 installation is needed. MQTT support includes a bundled browser client, with no CDN dependency.
 
-Try the [public demo](https://oldwired.github.io/simplecanvas/) or the
-[Really Simple demo](https://oldwired.github.io/simplecanvas/reallysimple/), which uses the same
-app with all optional features disabled and the page title **Really SimpleCanvas**.
+Try the [public demo](https://oldwired.github.io/paperwire/) or explore the
+[interactive workspace demo](https://oldwired.github.io/paperwire/examples/workspace-runtime.html),
+with shared data, live components, and multiple pages.
+
+Source and issues: [oldwired/paperwire](https://github.com/oldwired/paperwire).
 
 - [Get started](#get-started)
 - [Draw and edit](#draw-and-edit)
@@ -51,7 +53,7 @@ links, and rules. Markdown stays left/top-aligned; cropped PNG/SVG exports inclu
 rendered content. Table cells remain plain text.
 
 Copying a selection keeps editable objects available for pasting within the app. When the
-browser supports and permits clipboard writing, it also copies editable SimpleCanvas JSON
+browser supports and permits clipboard writing, it also copies editable Paperwire JSON
 and a PNG fallback for other applications. External clipboard writing can fail independently
 of the internal copy; use **Export PNG** if pasting into another application fails.
 
@@ -618,7 +620,7 @@ with retained initial values. Stop/restart it to try reconnect behavior, or swit
 sketch to see another Subscribe sharing the same Config. The third, **Commands & replies**, connects
 Number control → JSON build → MQTT Publish and logs broker acknowledgements separately from device
 responses. Its helper accepts only non-retained `{"value": 0–100}` commands on
-`simplecanvas/demo/command`, then simulates a device reply on `simplecanvas/demo/reply`. It refuses
+`paperwire/demo/command`, then simulates a device reply on `paperwire/demo/reply`. It refuses
 other client writes. This is a local testing broker, not a production service. A downloaded reader
 is self-contained but live operations still need a reachable broker. Saved offline reading snapshots
 remain later work.
@@ -687,7 +689,7 @@ default to `true`. Without a settings file, or when opening the HTML directly as
 the standard features remain available. No settings file is required to run the app.
 
 The optional top-level `title` sets the browser tab's `<title>` as plain text. It must be a
-nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For example:
+nonempty string; omit it to keep **Paperwire — Quick Sketches**. For example:
 
 ```json
 {
@@ -742,15 +744,14 @@ directory with
 `index.html` and `shapes-library.json`, plus `settings.json` if present. It copies the tracked
 `examples/demo-shapes-library.json` to that conventional library name, so the existing loader
 picks it up.
-The workflow also publishes `reallysimple/index.html` (a copy of the same HTML) and
-`reallysimple/settings.json`, with all optional features disabled. The variant settings are
-tracked in [reallysimple/settings.json](reallysimple/settings.json). Only the prepared directory
-is uploaded to Pages.
+The workflow also publishes the bundled MQTT client and the `examples/` directory, including
+standalone interactive HTML demos and their editable workspace JSON files. Only the prepared
+directory is uploaded to Pages. The public editor has all optional features enabled by default.
 
 For a new deployment or fork, ensure the workflow is present on `main`, then open the
 repository's **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
 Run **Deploy demo to Pages** from the Actions tab. Subsequent changes to the HTML, demo library,
-either settings file, test dependencies, regression tests, the example generator, or workflow on
+the settings file, test dependencies, regression tests, the example generator, or workflow on
 `main` run the test gate before deploying automatically.
 
 ## Development and releases
@@ -808,3 +809,9 @@ the usual source archives as ZIP and tar.gz downloads. The workflow uses the bui
 no additional secrets or build step are needed.
 
 Licensed under the MIT License.
+
+### Compatibility with earlier files
+
+Paperwire retains the legacy `SimpleCanvas` JSON format markers and browser storage names so
+existing sketches, workspaces, libraries, and saved browser data remain readable. Browser data is
+scoped to the deployment URL; export a workspace and library from the old demo to move them to Paperwire.

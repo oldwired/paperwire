@@ -38,11 +38,11 @@ async function seed(run,url,{memo=false,startup=false,second=false}={}){
       const item=clone(definition.items[0]);return {...item,uid,componentName:uid,x,y,...extra,state:{...item.state,...extra.state},inputValues:{...item.inputValues,...extra.inputValues}};
     };
     items=[make('mqttConfig','config',50,60,{state:{connectOnStart:${startup}},inputValues:{url:${JSON.stringify(url)},clientId:''}}),
-      make('mqttSubscribe','reading',450,60,{state:{format:'json',valueType:'number'},inputValues:{topic:'simplecanvas/demo/reading',path:'/value'},mqttBinding:{sketchId:activeTabId,componentUid:'config'}}),
-      make('mqttSubscribe','text',850,60,{state:{format:'text',valueType:'string'},inputValues:{topic:'simplecanvas/demo/status',path:''},mqttBinding:{sketchId:activeTabId,componentUid:'config'}}),
+      make('mqttSubscribe','reading',450,60,{state:{format:'json',valueType:'number'},inputValues:{topic:'paperwire/demo/reading',path:'/value'},mqttBinding:{sketchId:activeTabId,componentUid:'config'}}),
+      make('mqttSubscribe','text',850,60,{state:{format:'text',valueType:'string'},inputValues:{topic:'paperwire/demo/status',path:''},mqttBinding:{sketchId:activeTabId,componentUid:'config'}}),
       make('numberControl','control',50,420)];
     ${memo?`items.push(make('memo','memo',450,420,{bindings:{line:{uid:'text',port:'value'}}}));`:''}
-    ${second?`items.push(make('mqttConfig','config2',50,750,{inputValues:{url:${JSON.stringify(url)},clientId:''}}),make('mqttSubscribe','reading2',450,750,{state:{format:'json',valueType:'number'},inputValues:{topic:'simplecanvas/demo/reading',path:'/value'},mqttBinding:{sketchId:activeTabId,componentUid:'config2'}}));`:''}
+    ${second?`items.push(make('mqttConfig','config2',50,750,{inputValues:{url:${JSON.stringify(url)},clientId:''}}),make('mqttSubscribe','reading2',450,750,{state:{format:'json',valueType:'number'},inputValues:{topic:'paperwire/demo/reading',path:'/value'},mqttBinding:{sketchId:activeTabId,componentUid:'config2'}}));`:''}
     datasets={};selection=[];editingSmartIdx=null;setTool('select');render();save();
     await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true);undoStack=[];redoStack=[];await persistWorkspace();
   })()`);

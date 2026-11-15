@@ -1,6 +1,6 @@
 # Browser regression checks
 
-SimpleCanvas runs by opening `index.html`. Dependencies and the commands below are for development.
+Paperwire runs by opening `index.html`. Dependencies and the commands below are for development.
 See the [coverage catalog](COVERAGE.md) for detailed scenarios and
 [project notes](../CLAUDE.md) for implementation constraints.
 
@@ -183,8 +183,8 @@ and explicit JSON commands with separate broker-acknowledgement and device-respo
 After `npm ci`, run `node tools/serve-mqtt-example.cjs` and open
 `http://127.0.0.1:8001/examples/mqtt-integrations.html`. The helper runs a loopback WebSocket broker,
 serves the editor and self-contained reader, publishes retained baselines, and sends fresh readings
-once per second. It permits only a bounded non-retained JSON command on `simplecanvas/demo/command`
-and simulates its separate device response on `simplecanvas/demo/reply`; other client publications
+once per second. It permits only a bounded non-retained JSON command on `paperwire/demo/command`
+and simulates its separate device response on `paperwire/demo/reply`; other client publications
 are rejected. It is development-only; the browser client is already bundled in the app and HTML.
 The automated broker fixture never contacts an external service. Startup is manual unless explicitly
 enabled for Run/HTML. Stop/restart the helper to inspect reconnect and stale-reading behavior.

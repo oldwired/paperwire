@@ -7,7 +7,7 @@ on:
       - index.html
       - examples/**
       - settings.json
-      - reallysimple/settings.json
+      - vendor/**
       - .github/workflows/pages.yml
       - .github/workflows/browser-tests.yml
       - package.json
@@ -52,9 +52,8 @@ jobs:
           if [ -f settings.json ]; then
             cp settings.json _site/settings.json
           fi
-          mkdir _site/reallysimple
-          cp index.html _site/reallysimple/index.html
-          cp reallysimple/settings.json _site/reallysimple/settings.json
+          cp -R vendor _site/vendor
+          cp -R examples _site/examples
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

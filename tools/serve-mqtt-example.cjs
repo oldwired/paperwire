@@ -7,8 +7,8 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const {WebSocketServer,createWebSocketStream}=require('ws');
 const root=path.join(__dirname,'..');
-const topics={reading:'simplecanvas/demo/reading',status:'simplecanvas/demo/status',
-  command:'simplecanvas/demo/command',reply:'simplecanvas/demo/reply'};
+const topics={reading:'paperwire/demo/reading',status:'paperwire/demo/status',
+  command:'paperwire/demo/command',reply:'paperwire/demo/reply'};
 const types={'.html':'text/html; charset=utf-8','.json':'application/json; charset=utf-8',
   '.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png',
   '.svg':'image/svg+xml','.ico':'image/x-icon','.md':'text/plain; charset=utf-8'};

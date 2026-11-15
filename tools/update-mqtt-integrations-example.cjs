@@ -1,4 +1,4 @@
-// Build a small MQTT application example and export it through SimpleCanvas itself.
+// Build a small MQTT application example and export it through Paperwire itself.
 // Serve the repository root over HTTP(S), then open examples/mqtt-integrations.html.
 const fs=require('node:fs');
 const path=require('node:path');
@@ -32,8 +32,8 @@ function buildMqttIntegrationsExample({root:directory=root}={}){
     component('number-control.js','mqtt-local-control','Local control · independent of MQTT',440,140,{w:300,h:142,state:{value:25}}),
     component('live-clock.js','mqtt-clock','Clock · keeps running',800,140,{w:160,h:210,state:{showIndicators:false},inputValues:{timezone:'UTC'}}),
     component('workspace-settings.js','mqtt-workspace-settings','Whole workspace execution',1000,140,{w:270,h:184,workspaceSettings:true,state:{executionMode:'whole workspace'},inputValues:{title:'MQTT integration example'}}),
-    component('mqtt-subscribe.js','mqtt-reading','Workshop reading',40,370,{inputValues:{topic:'simplecanvas/demo/reading',path:'/value'},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
-    component('mqtt-subscribe.js','mqtt-status','Workshop message',420,370,{state:{format:'text',valueType:'string'},inputValues:{topic:'simplecanvas/demo/status',path:''},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
+    component('mqtt-subscribe.js','mqtt-reading','Workshop reading',40,370,{inputValues:{topic:'paperwire/demo/reading',path:'/value'},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
+    component('mqtt-subscribe.js','mqtt-status','Workshop message',420,370,{state:{format:'text',valueType:'string'},inputValues:{topic:'paperwire/demo/status',path:''},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
     component('gauge.js','mqtt-reading-gauge','Workshop · 0–100',800,370,{w:220,h:160,fill:false,bindings:{value:bind('mqtt-reading')}}),
     component('gauge.js','mqtt-control-gauge','Local slider',1060,370,{w:210,h:160,fill:false,bindings:{value:bind('mqtt-local-control')}}),
     component('text-label.js','mqtt-status-label','Latest message',40,570,{w:720,h:80,fontSize:27,state:{showName:true},bindings:{value:bind('mqtt-status')}}),
@@ -45,7 +45,7 @@ function buildMqttIntegrationsExample({root:directory=root}={}){
   const other=[
     text('mqtt-shared-title','Another sketch · the same MQTT Config',40,24,1240,44,28),
     text('mqtt-shared-intro','This workspace uses Whole workspace execution. The connection on the first sketch stays active while this view subscribes through the same Config.',40,78,1240,60,18),
-    component('mqtt-subscribe.js','mqtt-other-reading','Second view of Workshop',40,172,{inputValues:{topic:'simplecanvas/demo/reading',path:'/value'},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
+    component('mqtt-subscribe.js','mqtt-other-reading','Second view of Workshop',40,172,{inputValues:{topic:'paperwire/demo/reading',path:'/value'},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
     component('gauge.js','mqtt-other-gauge','Shared reading',450,172,{w:330,h:220,fill:false,bindings:{value:bind('mqtt-other-reading')}}),
     component('text-label.js','mqtt-other-json','Complete JSON message',840,172,{w:430,h:220,fontSize:19,state:{showName:true},strokeOn:true,color:'#cbd5e1',bindings:{value:bind('mqtt-other-reading','json')}}),
     text('mqtt-shared-help','Try it\n• Connect on the first sketch, then switch between the two views. They share one broker connection.\n• Stop and restart the example server: the Config shows reconnecting, then subscriptions recover.\n• Disconnect explicitly: it stays disconnected until Connect.\n• In the editor, Subscribe → Edit lets you choose an MQTT Config by sketch and instance name.',40,420,1230,210,19),
@@ -56,9 +56,9 @@ function buildMqttIntegrationsExample({root:directory=root}={}){
     text('mqtt-command-intro','Connect the Local demo broker on the first sketch. Choose a value, then click Send. Changing the slider only prepares the JSON; it never sends a command by itself.',40,78,1240,60,18),
     component('number-control.js','mqtt-command-value','Requested value · 0–100',40,160,{w:320,h:144,state:{value:65}}),
     component('json-build.js','mqtt-command-json','Command JSON',410,160,{w:330,h:144,state:{fields:'value:number',showIndicators:false},bindings:{field0:bind('mqtt-command-value')}}),
-    component('mqtt-publish.js','mqtt-command-publish','Send to demo device',800,160,{w:470,h:208,state:{format:'json'},inputValues:{topic:'simplecanvas/demo/command'},bindings:{payload:bind('mqtt-command-json','text')},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
+    component('mqtt-publish.js','mqtt-command-publish','Send to demo device',800,160,{w:470,h:208,state:{format:'json'},inputValues:{topic:'paperwire/demo/command'},bindings:{payload:bind('mqtt-command-json','text')},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
     text('mqtt-command-capture','Each Send captures the topic and payload.\nNo queue while disconnected; reconnect never replays a command.',40,320,700,52,17),
-    component('mqtt-subscribe.js','mqtt-command-reply','Demo device reply',40,400,{w:360,h:176,inputValues:{topic:'simplecanvas/demo/reply',path:'/value'},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
+    component('mqtt-subscribe.js','mqtt-command-reply','Demo device reply',40,400,{w:360,h:176,inputValues:{topic:'paperwire/demo/reply',path:'/value'},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
     component('gauge.js','mqtt-command-gauge','Applied value',440,400,{w:220,h:176,fill:false,bindings:{value:bind('mqtt-command-reply')}}),
     component('text-label.js','mqtt-command-response','Complete device response',710,400,{w:560,h:176,fontSize:19,state:{showName:true},strokeOn:true,color:'#cbd5e1',bindings:{value:bind('mqtt-command-reply','json')}}),
     text('mqtt-command-ack-heading','Broker acknowledgements · sent payload',40,596,380,24,17),

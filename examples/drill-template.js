@@ -1,11 +1,11 @@
-// Smart-shape script for SimpleCanvas — a 4-hole square drilling template ("Bohrschablone"),
+// Smart-shape script for Paperwire — a 4-hole square drilling template ("Bohrschablone"),
 // sized in real millimeters so it prints 1:1 (96px == 1 inch == 25.4mm, the fixed CSS/SVG pixel
 // definition — the actual print-scale guarantee comes from exporting to SVG and printing "actual
 // size" from a vector program, not from this app's own browser-based Print button). No separate
 // calibration mark is drawn for that — just measure the printed holes themselves against a real
 // ruler, same as the reference spacing label already tells you what they SHOULD measure.
 //
-// To use: SimpleCanvas → Shape Library → Manage → "Add smart shape…" → pick "Blank" → paste this
+// To use: Paperwire → Shape Library → Manage → "Add smart shape…" → pick "Blank" → paste this
 // whole file's content into the Script field (this header comment included — it's harmless there).
 //
 // - Resize with the ordinary resize handles (Shift keeps it square) to set the hole spacing.

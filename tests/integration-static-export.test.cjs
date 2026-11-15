@@ -90,7 +90,7 @@ test('HTML and Run stay fresh, and a failed HTTP reading does not reappear in a 
 test('static images capture an MQTT reading from an inactive service sketch without connecting again',()=>app(async({page,run,broker,origin})=>{
   const service=await run(`(()=>{items=[make('workspaceSettings','settings',30,30,{state:{executionMode:'whole workspace'}}),
     make('mqttConfig','config',30,130,{inputValues:{url:${JSON.stringify(origin.replace('http:','ws:')+'/mqtt')}}}),
-    make('mqttSubscribe','reading',430,130,{state:{format:'text',valueType:'string'},inputValues:{topic:'simplecanvas/demo/status'},mqttBinding:{sketchId:activeTabId,componentUid:'config'}})];
+    make('mqttSubscribe','reading',430,130,{state:{format:'text',valueType:'string'},inputValues:{topic:'paperwire/demo/status'},mqttBinding:{sketchId:activeTabId,componentUid:'config'}})];
     datasets={};render();save();return activeTabId;})()`);
   await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');
   await run("openEditorComponentDataAction(items.find(item=>item.uid==='config'),{type:'mqttConnect'},()=>true)");

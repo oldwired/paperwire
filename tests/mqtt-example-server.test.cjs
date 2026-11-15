@@ -23,7 +23,7 @@ test('MQTT example serves retained baselines and changing live values over real 
   const example=await serve(t),connection=await client(t,example.url),messages=[];
   let ready;const baseline=new Promise(resolve=>ready=resolve);
   connection.on('message',(topic,payload,packet)=>{messages.push({topic,text:payload.toString(),retain:packet.retain});if(messages.length===3)ready();});
-  await connection.subscribeAsync('simplecanvas/demo/#');
+  await connection.subscribeAsync('paperwire/demo/#');
   await baseline;
   assert.ok(messages.some(message=>message.topic===example.topics.reading&&JSON.parse(message.text).value===35&&message.retain));
   const received=once(connection,'message');await example.publish(example.topics.reading,{value:72},{retain:true});await received;

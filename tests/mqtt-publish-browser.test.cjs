@@ -9,7 +9,7 @@ const {launchBrowser}=require('./helpers/browser.cjs');
 const {parseApp}=require('./helpers/app-source.cjs');
 const {createPublishBroker}=require('./helpers/mqtt-publish-broker.cjs');
 const {createMosquitto}=require('./helpers/mosquitto.cjs');
-const root=path.join(__dirname,'..'),command='simplecanvas/test/command',reading='simplecanvas/test/reading';
+const root=path.join(__dirname,'..'),command='paperwire/test/command',reading='paperwire/test/reading';
 let browser;
 before(async()=>{browser=await launchBrowser();});
 after(async()=>browser?.close());

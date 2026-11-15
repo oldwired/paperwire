@@ -1,5 +1,5 @@
 {
-  "name": "simplecanvas",
+  "name": "paperwire",
   "private": true,
   "scripts": {
     "test": "node --test --test-concurrency=2 tests/*.test.cjs"

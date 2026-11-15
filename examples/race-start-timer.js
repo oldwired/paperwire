@@ -1,9 +1,9 @@
-// Smart-shape script for SimpleCanvas — a second Timer variant ("Timer v2") for sailing race starts:
+// Smart-shape script for Paperwire — a second Timer variant ("Timer v2") for sailing race starts:
 // the existing Timer's own countdown dial (reused almost as-is, just shifted into the right part of
 // the box) plus a signal mast to its left showing the WR 26 (World Sailing Racing Rules, 5-Minute-
 // Start) flag sequence as a state machine.
 //
-// To use: SimpleCanvas → Shape Library → Manage → "Add smart shape…" → pick "Blank" → paste this
+// To use: Paperwire → Shape Library → Manage → "Add smart shape…" → pick "Blank" → paste this
 // whole file's content into the Script field (this header comment included — it's harmless there).
 //
 // - Drag the clock hand (right side) to set the time, before OR after the start: unlike the original

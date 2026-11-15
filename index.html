@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SimpleCanvas — Quick Sketches</title>
+<title>Paperwire — Quick Sketches</title>
 <style>
   :root{
     --bg:#eef0f4;
@@ -2462,7 +2462,7 @@
   function downloadWorkspaceRecovery(){
     if(!workspaceStorage.protected){exportWorkspace({recovery:true});return;}
     const url=URL.createObjectURL(new Blob([JSON.stringify(workspaceStorage.raw,null,2)],{type:'application/json'}));
-    const a=document.createElement('a');a.href=url;a.download='simplecanvas-recovery.json';a.click();URL.revokeObjectURL(url);
+    const a=document.createElement('a');a.href=url;a.download='paperwire-recovery.json';a.click();URL.revokeObjectURL(url);
   }
   async function resetWorkspaceRecovery(){
     const epoch=workspaceStorage.claimEpoch,current=()=>workspaceStorage.claimEpoch===epoch;
@@ -12741,7 +12741,7 @@ safe-buffer/index.js:
     const raw=record.library;
     if(!Array.isArray(raw.shapes) || !Array.isArray(raw.workingCollection))throw new Error('The saved library is not readable');
     // Factory entries remain references to the installed definitions; personal copies keep
-    // their scripts. Updating SimpleCanvas must not turn pinned built-ins into old duplicates.
+    // their scripts. Updating Paperwire must not turn pinned built-ins into old duplicates.
     const builtins=record.builtinIds.map(id=>builtInShapeLibrary.find(entry=>entry.id===id)).filter(Boolean);
     const removed=new Set(record.builtinIds.filter(id=>!builtins.some(entry=>entry.id===id)));
     const knownBuiltins=new Set(builtInShapeLibrary.map(entry=>entry.id));
@@ -15790,7 +15790,7 @@ safe-buffer/index.js:
       return { entries: [{ id:validWorkspaceSketchId(data.sketchId)?data.sketchId:newTabId(),name:null, items:scene.items, assets:scene.assets, datasets:scene.datasets, ui:null,
         ...(credentials.length?{integrationCredentials:credentials}:{}) }], activeIndex: 0 };
     }
-    return null;   // not a recognized SimpleCanvas file
+    return null;   // not a recognized Paperwire file
   }
   // "Open Workspace…" — accepts either a workspace or a single-sketch file, always REPLACES the
   // whole current set of open tabs (a picked single-sketch file becomes the one resulting tab).
@@ -15810,7 +15810,7 @@ safe-buffer/index.js:
         parsed = parseFileAsTabs(data);
         if(parsed){assertWorkspaceSettingsTransfer(parsed.entries,null,true);parsed.entries=transferWorkspaceEntries(parsed.entries,parsed.entries.map(entry=>entry.id),{freshDatasets:false});}
       }catch(error){toast(error.message);return;}
-      if(!parsed || !parsed.entries.length){ toast(parsed ? 'No readable tabs in that file' : 'That is not a SimpleCanvas file'); return; }
+      if(!parsed || !parsed.entries.length){ toast(parsed ? 'No readable tabs in that file' : 'That is not a Paperwire file'); return; }
 
       if(textInput.style.display==='block') commitText();
       rememberActiveTab();
@@ -15876,7 +15876,7 @@ safe-buffer/index.js:
         return;
       }
       if(!data || data.app !== 'SimpleCanvas' || !Array.isArray(data.items)){
-        toast('That is not a SimpleCanvas file'); return;
+        toast('That is not a Paperwire file'); return;
       }
       let scene,credentials;try{scene = normalizeScene(unpackSmartScriptLists([data.items],data.scripts)[0], data.assets, data.version, data.datasets);credentials=normalizeIntegrationCredentialArtifact(data.integrationCredentials);}catch(error){toast(error.message);return;}
       if(!scene.items.length && data.items.length){ toast('No readable objects in that file'); return; }
@@ -25844,7 +25844,7 @@ safe-buffer/index.js:
       try{
         const data=JSON.parse(r.result);
         if(!data || data.app!=='SimpleCanvasShape' || !data.shape || typeof data.shape!=='object' || Array.isArray(data.shape))
-          throw new Error('That file is not a SimpleCanvas shape');
+          throw new Error('That file is not a Paperwire shape');
         if(data.version!==1)throw new Error('Unsupported shape file version');
         if((shapeLibrary?.shapes.length||0)>=MAX_ITEMS)throw new Error('Too many library entries');
         const catalog=libraryCatalogEntries(),ids=new Set(catalog.map(candidate=>candidate.id));

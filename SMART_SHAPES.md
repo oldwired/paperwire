@@ -242,7 +242,7 @@ state, and the difference between static snapshots and interactive HTML.
 An object, or a synchronous function returning one, with optional boolean flags `move`, `rotate`,
 `resizeWidth`, and `resizeHeight`. All flags default to `false`. The function receives a copy of
 state; modifying it does not update the saved instance. Interactive HTML reads these permissions
-after state or size changes and on refresh. They do not change editing behavior in SimpleCanvas.
+after state or size changes and on refresh. They do not change editing behavior in Paperwire.
 See [HTML export behavior](#html-export-behavior) for examples and creator-only permission controls.
 
 ### `handles(state, w, h, style)` (optional)
@@ -2312,7 +2312,7 @@ stopped when placed afresh.
 PNG, SVG, printing, and library thumbnails request fresh children once without starting refresh timers
 or invoking `refreshMs`. HTML includes an initial frozen SVG and then runs the smart shapes in an
 isolated runtime, including `refreshMs`, while its tab is visible. JSON sketches and workspaces
-retain the script and state, so live shapes resume when opened in SimpleCanvas.
+retain the script and state, so live shapes resume when opened in Paperwire.
 
 ## Fixed units and physical printing
 

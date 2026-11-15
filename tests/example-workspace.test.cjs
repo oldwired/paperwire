@@ -795,7 +795,7 @@ test('native tools demo opens by URL and passes JSON parameters to the destinati
 test('page settings demo imports live inputs while keeping the editor controls available',async()=>app(async({page,run})=>{
   await importExample(page,run);await activate(run,32);
   const settings=await run(`resolveSmartComponentIo(items.find(item=>item.uid==='demo-32-settings'))`);
-  assert.deepEqual(settings.inputs,{title:'SimpleCanvas · Sketch settings',showTabs:true,showWiring:false,showSimulationControls:true});
+  assert.deepEqual(settings.inputs,{title:'Paperwire · Sketch settings',showTabs:true,showWiring:false,showSimulationControls:true});
   assert.deepEqual(settings.outputs,{});
   await editorHandle(page,run,32,'tabs','toggle');await editorHandle(page,run,32,'simulation','toggle');
   const changed=await run(`resolveSmartComponentIo(items.find(item=>item.uid==='demo-32-settings'))`);
@@ -812,7 +812,7 @@ test('page settings demo updates reader chrome and restores defaults through its
   },{selector,value});
   try{
     await page.goto(pathToFileURL(readerPath).href+'?page=31');
-    await page.waitForFunction(()=>document.title==='SimpleCanvas · Sketch settings');
+    await page.waitForFunction(()=>document.title==='Paperwire · Sketch settings');
     await readerTab(page,32);
     const settings=readerHost(page,32,'settings');
     assert.equal(await settings.locator('text,rect').count(),0,'the settings block is authoring-only');
@@ -837,7 +837,7 @@ test('page settings demo updates reader chrome and restores defaults through its
     await readerTab(page,32);await page.waitForFunction(()=>document.title==='My interactive page');
     await shown('.tabbar',false);await shown('[aria-label="Signal simulation"]',false);
     await page.reload();await readerTab(page,32);
-    await page.waitForFunction(()=>document.title==='SimpleCanvas · Sketch settings');
+    await page.waitForFunction(()=>document.title==='Paperwire · Sketch settings');
     await shown('.tabbar',true);await shown('[aria-label="Signal simulation"]',true);
     assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}

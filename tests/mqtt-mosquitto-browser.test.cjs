@@ -11,7 +11,7 @@ const {launchBrowser}=require('./helpers/browser.cjs');
 const {parseApp}=require('./helpers/app-source.cjs');
 const {createMosquitto}=require('./helpers/mosquitto.cjs');
 const root=path.join(__dirname,'..'),enabled=Boolean(process.env.MOSQUITTO_BIN);
-const reading='simplecanvas/mosquitto/reading',status='simplecanvas/mosquitto/status';
+const reading='paperwire/mosquitto/reading',status='paperwire/mosquitto/status';
 const options={skip:enabled?false:'Set MOSQUITTO_BIN to run the optional Mosquitto compatibility suite',timeout:90000};
 let browser;
 before(async()=>{if(enabled)browser=await launchBrowser();});

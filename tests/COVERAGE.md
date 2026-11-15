@@ -51,7 +51,7 @@ print check at 100% / Actual size.
 Deployment-settings checks cover the feature switches independently, native browser printing when
 custom printing is disabled, fixed-library smart handles, preservation and recovery of hidden tabs,
 active-sketch exports, delayed and invalid settings,
-timeout recovery, custom titles, the Really Simple deployment, and opening the actual standalone
+timeout recovery, custom titles, a deployment with optional features disabled, and opening the actual standalone
 HTML directly from disk.
 
 ## Connected components and wiring
