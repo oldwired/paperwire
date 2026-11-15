@@ -44,7 +44,7 @@ survive unrelated graph changes and recover on relevant definition/input changes
 Reader `data-smart-ready` identifies a completed paint for `data-smart-graph-revision`, not merely
 an earlier successful render; clear it when invalidation/Step is requested. Unchanged reader
 drawings may be reused only until their refresh deadline. See `tests/runtime-stability.test.cjs`
-and `tests/feedback-controls.test.cjs` before changing these paths.
+and `tests/runtime-stability.test.cjs` before changing these paths.
 
 Workspace settings selects Active sketch only or Whole workspace execution at startup. Cross-sketch
 signals/events use explicit Publish/Receive endpoints; shared datasets appear in other sketches'
@@ -53,7 +53,7 @@ payload and baseline graph: they finish atomically while the page is hidden or t
 changes in Whole workspace mode. New activity and clocks pause while hidden. Page departure,
 ownership loss, invalidated participants, or leaving an Active sketch only execution scope still
 cancel pending work. Both editor and HTML reader follow these rules; see
-[event visibility tests](tests/event-visibility.test.cjs).
+[event visibility tests](tests/component-events.test.cjs).
 
 **Run** opens a disposable workspace copy in an isolated iframe using the HTML export reader.
 The parent editor is inert and its simulation pauses until **Return to editing**; returning
@@ -89,13 +89,13 @@ credentials. Accepted POST credentials are captured like the body/key; later inp
 the next command. No-auth mode omits Authorization even if session credentials exist. Run owns a separate service
 lifetime and credential store; opaque-origin CORS and native local-network permissions still apply.
 See `tests/integration-foundation.test.cjs`, `tests/http-integration-runtime.test.cjs` and
-`tests/http-automation-runtime.test.cjs`.
+`tests/http-integration-runtime.test.cjs`.
 HTTP Table responses publish transient, immutable tables through the existing `value` port.
 Use ordinary table flows or Dataset Source/Live/Replace/Append to create an editable stored copy;
 HTTP never owns a document dataset. Typed `{columns,rows}` responses support empty results;
 record arrays infer each response's schema independently. JSON text availability is separate from
 table availability, and completion-driven table actions sample their captured response through
-pure transforms. Keep these contracts in editor, Run and export; see `tests/http-table-runtime.test.cjs`.
+pure transforms. Keep these contracts in editor, Run and export; see `tests/http-integration-runtime.test.cjs`.
 MQTT Config/Subscribe/Publish share host-owned connections through explicit `mqttBinding` sketch/component
 references. Draft URL/client-ID changes apply only on Connect; retained/initial messages establish
 readings without events. Keep generation checks, bounded reconnect, stale/unavailable value handling
@@ -107,7 +107,7 @@ not block the workspace queue, and retired generations must reject late acknowle
 Each graph pass captures its integration readings; incoming packets cannot change a later settling
 round of that pass. Shared network redraw tasks coalesce behind accepted gestures, and MQTT
 value-only consumers skip event preparation. Captured events retain their original topic/timestamp
-as well as payload. See `tests/mqtt-event-receivers.test.cjs` and the continuous-telemetry and
+as well as payload. See `tests/mqtt-runtime-browser.test.cjs` and the continuous-telemetry and
 queued-topic regressions in `tests/mqtt-runtime-browser.test.cjs`.
 Regenerate all four self-contained demo readers after shared runtime changes.
 

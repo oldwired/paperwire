@@ -813,16 +813,16 @@ layouts were visually checked.
 
 - [x] Build the threshold-and-toggle example from a blank canvas, distinguish repeated sources,
   and inspect proposed outputs/errors before Save. Cancel preserves the drawing; rapid edits and
-  dynamic ports retain correct feedback. Coverage: [Edit](../tests/components-inputs.test.cjs)
-  and [library browser](../tests/library-browser.test.cjs).
+  dynamic ports retain correct feedback. Coverage: Edit
+  and library browser.
 - [x] Duplicate the connected group, change one copy independently, download/reload JSON, delete
   a source, and repair its binding. Both copies respond in downloaded HTML without HTTP requests.
   The [component regressions](../tests/components.test.cjs) retain the wiring and persistence baseline.
 - [x] Roundtrip category memberships, pins, library definitions, and individual grouped shapes.
-  Coverage: [library organization](../tests/library-organization.test.cjs) and
+  Coverage: library organization and
   [shape transfer](../tests/library-transfer.test.cjs).
 - [x] Exercise all eight shipped workspace tabs in the editor and offline reader.
-  Coverage: [example workspace](../tests/example-workspace.test.cjs).
+  Coverage: example workspace.
 
 Stage 2 is complete on the feature branch. Its original acyclic execution contract is the
 baseline for the implemented feedback milestone below; phase 3 remains separate.
@@ -931,20 +931,20 @@ ring, an inspectable Johnson feedback register, a decoded decade, and positive-d
 Its [HTML reader](../examples/smart-components-workspace.html) is regenerated through the real editor
 exporter by [the update tool](../tools/update-example-workspace.cjs); it has no HTTP dependencies.
 
-- [Feedback runtime](../tests/feedback-runtime.test.cjs): bounded settling, observed intermediate
+- Feedback runtime: bounded settling, observed intermediate
   signals, unknown logic, feedback memory/restoration, ordering, and independent-branch recovery.
-- [Simulation controls](../tests/feedback-controls.test.cjs): editor and offline Pause/Step/Resume.
-- [Review regressions](../tests/feedback-review.test.cjs): bounded retained wiring keys, stored
+- Simulation controls: editor and offline Pause/Step/Resume.
+- Review regressions: bounded retained wiring keys, stored
   outputs through Z, offline and Edit preview parity, and Pause/time preservation across Undo/Redo.
-- [Deadline ordering](../tests/feedback-deadlines.test.cjs): overdue signals settle chronologically,
+- Deadline ordering: overdue signals settle chronologically,
   so an earlier clock edge samples earlier data after a late wake; cancellation is atomic and
   positive-time feedback has a separate bounded-backlog error/recovery path.
-- [Wake policies](../tests/temporal-wake-policies.test.cjs): queued/latest validation and the nine
+- Wake policies: queued/latest validation and the nine
   periodic/phase/wall-clock components preserve their no-catch-up behavior during replay.
-- [Sequential contracts](../tests/sequential-components.test.cjs): all eight new built-ins,
+- Sequential contracts: all eight new built-ins,
   three-valued gate truth tables, priorities, bounded ports, source parity, and rendering.
-- [Workspace](../tests/example-workspace.test.cjs) and
-  [feedback examples](../tests/feedback-workspace.test.cjs): the fifteen feedback-milestone tabs, current source snapshots,
+- Workspace and
+  feedback examples: the fifteen feedback-milestone tabs, current source snapshots,
   local bindings, the original eight control workflows, counter feedback, latch initialization/hold,
   shared-edge storage, sequences, delayed feedback, and actual offline interaction.
 
@@ -1700,7 +1700,7 @@ WebKit's two skips are the intentional
 Chromium-CDP touch tests. These are the original full-run totals plus passing targeted reruns,
 not a claim that the entire suite was rerun after correcting the selectors.
 
-The new [blank-canvas closeout test](../tests/phase3-closeout.test.cjs) passed in both engines.
+The new blank-canvas closeout test passed in both engines.
 It places components through the real library, imports semicolon-separated data through Edit,
 connects ports by dragging in both directions, rejects an incompatible link, edits shared records,
 checks Undo/Redo and reload, and operates the actual downloaded HTML and result download offline.
@@ -1711,19 +1711,19 @@ checks Undo/Redo and reload, and operates the actual downloaded HTML and result 
   disconnection, and Undo.
 - [x] Keep filtered/sorted edits attached to their source records, preserve independent stored
   aggregate results, and overwrite Live working edits only on an accepted source publication.
-  Coverage: [record editing](../tests/dataset-editor.test.cjs),
-  [Live updates](../tests/dataset-live-browser.test.cjs), and the
-  [workspace comparisons](../tests/example-workspace.test.cjs).
+  Coverage: record editing,
+  Live updates, and the
+  workspace comparisons.
 - [x] Preserve ownership, revisions, connections, and accepted data through copies, history,
-  browser reload, and editable JSON. Coverage: [owner copies](../tests/dataset-owner-copy.test.cjs),
-  [dataset history](../tests/dataset-model-runtime.test.cjs), and
+  browser reload, and editable JSON. Coverage: owner copies,
+  dataset history, and
   [imports and persistence](../tests/data-components.test.cjs).
 - [x] Keep Spreadsheet formulas/layout separate from records while publishing evaluated table
   results. Reader import, edit, capture, and source-update permissions stay explicit; downloads
   retain current result data without saving reader changes into the HTML. Coverage:
-  [spreadsheet results](../tests/spreadsheet-table-output-runtime.test.cjs),
-  [data actions](../tests/data-workflow.test.cjs), and
-  [capture](../tests/shared-dataset-capture.test.cjs).
+  spreadsheet results,
+  data actions, and
+  capture.
 - [x] Exercise all 26 shipped tabs and their offline reader. Visually inspect the newly authored
   editor/reader workflow and Wiring in tabs 17, 24, and 26. The documentation now includes a
   blank-canvas data walkthrough and consistently describes Edit, downloads, and permitted manual
@@ -2214,10 +2214,10 @@ offline-reader traversal checks. The three new walkthroughs passed in both engin
 refinement. Coverage includes repeated choices, selected-input suppression, fresh paused adapters,
 queue limits, completion through self-reset feedback, cancellation, Undo/reload, and notification
 rejection without reversing an accepted simulation or dataset change. See the
-[event built-in tests](../tests/component-event-builtins-runtime.test.cjs),
-[transition tests](../tests/component-transition-events.test.cjs),
-[action-result tests](../tests/component-action-events-runtime.test.cjs), and
-[demo walkthroughs](../tests/stage4-demo.test.cjs). This is focused increment validation, not a
+event built-in tests,
+transition tests,
+action-result tests, and
+demo walkthroughs. This is focused increment validation, not a
 new full-project release certification.
 
 ### Deferred event extensions
@@ -2341,18 +2341,18 @@ standalone HTML export. Restored documents retain the edited records and endpoin
 without replaying prior events. In the offline reader, repeated equal submissions append distinct
 rows and Memo entries across sketches; hidden Services keeps processing, inherited presentation
 settings apply, and no network requests are needed. See the
-[workspace authoring acceptance](../tests/workspace-runtime-authoring.test.cjs).
+workspace authoring acceptance.
 
 The closeout also fixes Capture row's editor-side dispatcher rejection path: a request rejected
 by the action queue now emits its declared Failed event without appending a record. The regression
 queues 65 requests and verifies 64 accepted appends plus one failure, rather than silently losing
-the rejection. The [action-result tests](../tests/component-action-events-runtime.test.cjs)
+the rejection. The action-result tests
 cover this alongside accepted completion and failure notification behavior.
 
 The closeout fixes a tab-bar scrolling race in the editor and HTML reader. Arrow scrolling now
 uses cancellable animation frames so an earlier scroll cannot later move a newly selected tab
 partly out of view. Selecting a tab reveals it fully, and pointer or wheel scrolling takes over
-from the animation. The [tab-bar tests](../tests/tabbar-overflow.test.cjs) cover interruption and
+from the animation. The tab-bar tests cover interruption and
 selected-tab visibility in both runtimes. Both bundled HTML workspaces were regenerated through
 the real exporter after the fix.
 
@@ -2404,7 +2404,7 @@ Reader readiness now belongs to the requested graph revision and
 completed drawing. Step clears readiness before evaluation begins, and an older asynchronous paint
 cannot mark a newer round ready. An unchanged validated drawing can be reused for the new revision;
 the intermediate completion/reset states remain inspectable. The deterministic
-[simulation-control tests](../tests/feedback-controls.test.cjs) hold evaluation and actual drawing
+simulation-control tests hold evaluation and actual drawing
 replies separately rather than relying on timing sleeps.
 Ignored or rejected reader controls restore live evaluation and paint readiness after their
 temporary gesture state ends. Simulation status updates preserve the Pause button's click target.
@@ -2648,14 +2648,14 @@ outputs. It does not duplicate formula, range or layout authoring.
 ### Stage 5 closeout
 
 Closed on 2026-10-21 with the disposable Run copy and explicit result-download policy. The
-[authored workflow regressions](../tests/phase5-closeout.test.cjs) cover library placement,
+authored workflow regressions cover library placement,
 configuration and binding through Edit, Run interaction and discard, autosave reload, workspace
 file reopen and self-contained offline HTML. The second workflow exercises Spreadsheet's
 inline formulas and compact inspector throughout the same sequence. Both workflows pass in
 Chromium and WebKit.
 
 The initial closeout's full Chromium suite passed **1,533/1,533** after its fixes. The
-[inspector UX regressions](../tests/component-inspector-ux.test.cjs) pass in each browser,
+inspector UX regressions pass in each browser,
 covering source search and stable selection, disconnection, broken-source repair, guarded
 navigation, table/event inputs, accessible validation and narrow layouts. The focused WebKit
 inspector checks, including Spreadsheet, workspace bindings and export dependencies, pass 37/37.
