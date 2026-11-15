@@ -812,6 +812,7 @@ Licensed under the MIT License.
 
 ### Compatibility with earlier files
 
-Paperwire retains the legacy `SimpleCanvas` JSON format markers and browser storage names so
-existing sketches, workspaces, libraries, and saved browser data remain readable. Browser data is
-scoped to the deployment URL; export a workspace and library from the old demo to move them to Paperwire.
+Paperwire retains the legacy `SimpleCanvas` JSON format markers so existing sketch, workspace,
+and library files remain importable. Its browser databases, local storage, and editing locks use
+separate Paperwire names. It does not automatically read or migrate SimpleCanvas browser data.
+Export a workspace and library from SimpleCanvas, then import those files into Paperwire to transfer work.

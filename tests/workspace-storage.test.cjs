@@ -5,6 +5,9 @@ const path=require('node:path');
 const {launchBrowser}=require('./helpers/browser.cjs');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
   .replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
+// Simulate the former app's storage names at exactly the same origin and pathname.
+const simpleCanvasHtml=html.replaceAll('paperwire:','simplecanvas:')
+  .replaceAll('PaperwireWorkspaces','SimpleCanvasWorkspaces').replaceAll('PaperwireLibrary','SimpleCanvasLibrary');
 const engine=process.env.BROWSER_ENGINE||'chromium';
 let browser;
 before(async()=>{browser=await launchBrowser({engine});});
@@ -14,7 +17,7 @@ async function app(fn,{init}={}){
   const context=await browser.newContext({viewport:{width:1280,height:900}}),errors=[];
   try{
     if(init)await context.addInitScript(init);
-    await context.route('http://localhost:4173/**',route=>route.fulfill({status:route.request().url().includes('.html')?200:404,contentType:'text/html',body:route.request().url().includes('.html')?html:''}));
+    await context.route('http://localhost:4173/**',route=>route.fulfill({status:route.request().url().includes('.html')?200:404,contentType:'text/html',body:route.request().url().includes('.html')?(route.request().url().includes('storage=simplecanvas')?simpleCanvasHtml:html):''}));
     const open=async(file='index.html')=>{
       const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
       await page.goto('http://localhost:4173/'+file);
@@ -32,7 +35,7 @@ const waitReadOnly=page=>page.waitForFunction(()=>__test.run('workspaceStorage.r
 test('workspace snapshots use IndexedDB when localStorage writes are disabled and survive reload',async()=>app(async({page,run})=>{
   assert.equal((await owner(run)).owned,true);assert.equal(await seed(run),true);
   const initial=await saved(run);assert.equal(initial.workspace.tabs[0].document.items[0].x,80);
-  assert.equal(await page.evaluate(()=>localStorage.getItem('simplecanvas:tabs:v1')),null);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('paperwire:tabs:v1')),null);
   await run('newTab();persistWorkspace()');assert.equal((await saved(run)).workspace.tabs.length,2);
   await page.reload();assert.equal(await run('tabs.length'),2);await run('activateTab(tabs[0].id)');assert.equal(await run('items[0].uid'),'box');
 },{init:()=>{Storage.prototype.setItem=function(){throw new DOMException('disabled','QuotaExceededError');};}}));
@@ -92,9 +95,9 @@ test('corrupt snapshots are preserved read-only and can be downloaded before exp
 
 test('malformed legacy storage is preserved instead of replaced with a blank autosave',async()=>app(async({page,run})=>{
   assert.equal((await owner(run)).protected,true);assert.equal(await saved(run),null);
-  assert.equal(await page.evaluate(()=>localStorage.getItem('simplecanvas:tabs:v1')),'{broken');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('paperwire:tabs:v1')),'{broken');
   await run('save()');assert.equal(await saved(run),null);
-},{init:()=>localStorage.setItem('simplecanvas:tabs:v1','{broken')}));
+},{init:()=>localStorage.setItem('paperwire:tabs:v1','{broken')}));
 
 test('direct file URLs retain autosave and single-owner behavior without a server',async()=>{
   const os=require('node:os'),{pathToFileURL}=require('node:url');
@@ -114,8 +117,8 @@ test('direct file URLs retain autosave and single-owner behavior without a serve
 test('legacy documents without their index remain recoverable instead of starting a new saved workspace',async()=>app(async({page,run})=>{
   assert.equal((await owner(run)).protected,true);assert.equal(await saved(run),null);
   const recovery=await run('workspaceStorage.raw');assert.equal(recovery.documents.orphan,'{"version":2,"items":[]}');
-  assert.equal(await page.evaluate(()=>localStorage.getItem('simplecanvas:doc:orphan')),recovery.documents.orphan);
-},{init:()=>localStorage.setItem('simplecanvas:doc:orphan','{"version":2,"items":[]}')}));
+  assert.equal(await page.evaluate(()=>localStorage.getItem('paperwire:doc:orphan')),recovery.documents.orphan);
+},{init:()=>localStorage.setItem('paperwire:doc:orphan','{"version":2,"items":[]}')}));
 
 for(const stage of ['database','lock']){
   test(`a cached page hidden while its ${stage} claim is pending cannot become an owner afterward`,async()=>app(async({page,run,open})=>{
@@ -164,3 +167,29 @@ for(const operation of ['resume','takeover','retry','recovery']){
     const other=await open();assert.equal((await owner(other.run)).writable,true);
   }));
 }
+
+
+test('Paperwire isolates saved work, libraries and editing ownership from SimpleCanvas at the same browser path',async()=>app(async({page,run,open})=>{
+  assert.equal(await run('items.length'),0,'SimpleCanvas legacy storage must not be imported automatically');
+  const old=await open('index.html?storage=simplecanvas');
+  assert.equal(await old.run('items[0].x'),310,'the former app retains its own legacy data');
+  assert.equal((await owner(run)).writable,true);assert.equal((await owner(old.run)).writable,true);
+  await seed(run,80);await seed(old.run,310);
+  const setLibrary=async(execute,name)=>execute(`(async()=>{
+    await restoreShapeLibrary();
+    shapeLibrary=prepareShapeLibrary({shapes:[{id:'personal-box',name:${JSON.stringify(name)},items:[${JSON.stringify(box)}]}]});
+    shapeLibraryRevision++;queueShapeLibrarySave();return persistShapeLibrary();
+  })()`);
+  assert.equal(await setLibrary(run,'Paperwire box'),true);
+  assert.equal(await setLibrary(old.run,'SimpleCanvas box'),true);
+  await page.reload();await old.page.reload();
+  assert.equal(await run('items[0].x'),80);assert.equal(await old.run('items[0].x'),310);
+  await run('restoreShapeLibrary()');await old.run('restoreShapeLibrary()');
+  assert.equal(await run('shapeLibrary.shapes[0].name'),'Paperwire box');
+  assert.equal(await old.run('shapeLibrary.shapes[0].name'),'SimpleCanvas box');
+  await run('applySketchToActiveTab([],{});persistWorkspace()');await setLibrary(run,'New Paperwire box');
+  await old.page.reload();
+  assert.equal(await old.run('items[0].x'),310,'clearing Paperwire does not clear SimpleCanvas');
+  await old.run('restoreShapeLibrary()');assert.equal(await old.run('shapeLibrary.shapes[0].name'),'SimpleCanvas box');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('simplecanvas:v1')),JSON.stringify({version:2,items:[{...box,x:310}],assets:{}}));
+},{init:()=>localStorage.setItem('simplecanvas:v1',JSON.stringify({version:2,items:[{type:'rect',uid:'box',x:310,y:90,w:150,h:100,color:'#1f2937',size:2,fill:true,fillColor:'#ffd166'}],assets:{}}))}));

@@ -204,17 +204,17 @@ test('disabled browser storage still permits drawing, tabs, and workspace export
 }}));
 
 test('large legacy sketches migrate to IndexedDB while retaining the source recovery backup', async () => app(async ({page,run}) => {
-  const backup=await page.evaluate(()=>localStorage.getItem('simplecanvas:v1'));
+  const backup=await page.evaluate(()=>localStorage.getItem('paperwire:v1'));
   assert.ok(backup.length>3_000_000);
   assert.equal(await run('items.length'),1);
   assert.equal(await page.locator('#autosaveWarning').isVisible(),false);
   const migrated=await savedWorkspace(run);
   assert.equal(migrated.workspace.tabs[0].document.items[0].id,'large');
-  assert.equal(await page.evaluate(()=>localStorage.getItem('simplecanvas:v1')),backup,'migration leaves its legacy recovery source intact');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('paperwire:v1')),backup,'migration leaves its legacy recovery source intact');
   await run('save();persistWorkspace()');await run('persistWorkspace()');await page.reload();
   assert.equal(await run('items[0].id'),'large');
 }, {init:()=>{
-    if(localStorage.getItem('simplecanvas:v1'))return;
+    if(localStorage.getItem('paperwire:v1'))return;
     const canvas=document.createElement('canvas');canvas.width=canvas.height=900;
     const ctx=canvas.getContext('2d'), image=ctx.createImageData(900,900);
     let seed=12345;
@@ -224,7 +224,7 @@ test('large legacy sketches migrate to IndexedDB while retaining the source reco
     }
     ctx.putImageData(image,0,0);
     const data=JSON.stringify({version:2,items:[{type:'image',id:'large',x:100,y:100,w:400,h:400}],assets:{large:canvas.toDataURL()}});
-    localStorage.setItem('simplecanvas:v1',data);
+    localStorage.setItem('paperwire:v1',data);
 }}));
 
 test('workspace replacement atomically retains the old durable workspace until retry succeeds', async () => app(async ({page,run}) => {
