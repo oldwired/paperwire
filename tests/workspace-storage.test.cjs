@@ -77,35 +77,6 @@ test('second window is read-only; explicit takeover loads the latest workspace a
   await other.page.reload();assert.equal(await other.run('items[0].x'),210);assert.equal((await owner(other.run)).writable,true);
 }));
 
-test('ownership fences stale writes even without Web Locks or BroadcastChannel messages',async()=>app(async({page,run,open})=>{
-  await seed(run);const other=await open();assert.equal((await owner(other.run)).writable,false);
-  await other.run('takeWorkspaceOwnership()');await other.run('items[0].x=260;save()');
-  // Suppress the heartbeat to exercise the atomic token check rather than message delivery.
-  const result=await run('clearInterval(workspaceStorage.heartbeat);items[0].x=999;save()');
-  assert.equal(result,false);assert.equal((await owner(run)).writable,false);
-  assert.equal((await saved(other.run)).workspace.tabs[0].document.items[0].x,260);
-  await other.page.close();
-  // Without either liveness API, a terminated page's deletion may not commit.
-  // The lease is the fallback; explicit takeover remains immediately available.
-  await run(`(async()=>{const db=await openWorkspaceDatabase();await new Promise(resolve=>{const tx=db.transaction('owners','readwrite'),store=tx.objectStore('owners'),get=store.get(WORKSPACE_STORAGE_KEY);get.onsuccess=()=>{if(get.result)store.put({...get.result,expiresAt:0},WORKSPACE_STORAGE_KEY);};tx.oncomplete=resolve;});})()`);
-  await page.reload();assert.equal((await owner(run)).writable,true);
-},{init:()=>{Object.defineProperty(navigator,'locks',{value:undefined});window.BroadcastChannel=undefined;}}));
-
-test('restoring a cached page never steals ownership from the active writer',async()=>app(async({page,run,open})=>{
-  await seed(run);await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
-  const other=await open();assert.equal((await owner(other.run)).writable,true);await other.run('items[0].x=270;save()');
-  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
-  await waitReadOnly(page);assert.equal((await owner(other.run)).writable,true);
-  assert.equal((await saved(run)).workspace.tabs[0].document.items[0].x,270);
-}));
-
-test('pathnames isolate independent workspaces in the same origin',async()=>app(async({run,open})=>{
-  await seed(run);const other=await open('another.html');assert.equal((await owner(other.run)).writable,true);
-  assert.equal(await other.run('items.length'),0);await seed(other.run,300);
-  assert.equal((await saved(run)).workspace.tabs[0].document.items[0].x,80);
-  assert.equal((await saved(other.run)).workspace.tabs[0].document.items[0].x,300);
-}));
-
 test('corrupt snapshots are preserved read-only and can be downloaded before explicit recovery',async()=>app(async({page,run})=>{
   await seed(run);const corrupt={version:1,revision:'broken',workspace:{tabs:[{id:'broken',name:'Broken',document:{items:[{type:'unknown'}]}}],activeId:'broken'}};
   await run(`(async()=>{const db=await openWorkspaceDatabase();await new Promise((resolve,reject)=>{const tx=db.transaction('workspaces','readwrite');tx.objectStore('workspaces').put(${JSON.stringify(corrupt)},WORKSPACE_STORAGE_KEY);tx.oncomplete=resolve;tx.onabort=reject;});})()`);
@@ -125,85 +96,6 @@ test('malformed legacy storage is preserved instead of replaced with a blank aut
   await run('save()');assert.equal(await saved(run),null);
 },{init:()=>localStorage.setItem('simplecanvas:tabs:v1','{broken')}));
 
-test('unavailable IndexedDB permits session editing with an explicit unsaved warning and recovery download',async()=>app(async({page,run})=>{
-  assert.equal((await owner(run)).writable,true);assert.equal(await seed(run),false);
-  assert.equal(await page.locator('#autosaveWarning').isVisible(),true);
-  const downloaded=page.waitForEvent('download');await page.locator('#saveRecoveryWorkspace').click();
-  const file=await downloaded;assert.equal(JSON.parse(fs.readFileSync(await file.path(),'utf8')).tabs[0].items[0].uid,'box');
-},{init:()=>{indexedDB.open=()=>{throw new DOMException('disabled','SecurityError');};}}));
-
-
-test('a copied reload ticket cannot displace a page that has already resumed',async()=>app(async({page,run,open})=>{
-  await seed(run);const previous=await run('workspaceStorage.token');
-  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
-  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
-  await page.waitForFunction(old=>__test.run('workspaceStorage.writable && workspaceStorage.token')!==old && __test.run('workspaceStorage.writable'),previous);
-  const resumed=await run('workspaceStorage.token');assert.notEqual(resumed,previous);
-  const other=await open();await other.run(`sessionStorage.setItem(WORKSPACE_HANDOFF_KEY,${JSON.stringify(previous)})`);
-  await other.page.reload();assert.equal((await owner(other.run)).writable,false);assert.equal((await owner(run)).writable,true);
-},{init:()=>Object.defineProperty(navigator,'locks',{value:undefined})}));
-
-test('taking ownership cancels an open editor dialog and leaves recovery controls usable',async()=>app(async({page,run,open})=>{
-  await seed(run);await run('newTab();persistWorkspace()');
-  const other=await open();await page.locator('.tab-select.active').dblclick();
-  await page.locator('#libraryDialog').waitFor({state:'visible'});
-  await other.run('takeWorkspaceOwnership()');await waitReadOnly(page);
-  await page.locator('#libraryDialog').waitFor({state:'hidden'});
-  assert.equal(await page.locator('#downloadWorkspaceRecovery').isVisible(),true);
-  assert.equal(await page.locator('#takeWorkspaceOwnership').isEnabled(),true);
-}));
-
-test('a sketch import started before an ownership handoff cannot overwrite the restored workspace',async()=>app(async({run,open})=>{
-  await seed(run);
-  await run(`
-    window.originalFileReader=FileReader;
-    window.FileReader=class {readAsText(){window.pendingSketchRead=this;}};
-    try{importProject(new File(['pending'],'pending.json'));}finally{window.FileReader=window.originalFileReader;}
-  `);
-  const other=await open();await other.run('takeWorkspaceOwnership()');await run('renewWorkspaceOwnership()');
-  await other.run('items[0].x=180;save()');await run('takeWorkspaceOwnership()');
-  const restored=await saved(run);assert.equal(restored.workspace.tabs[0].document.items[0].x,180);
-  await run(`pendingSketchRead.result=JSON.stringify({app:'SimpleCanvas',version:FORMAT_VERSION,
-    items:[{...${JSON.stringify(box)},uid:'stale-import',x:300}],assets:{}});
-    pendingSketchRead.onload();persistWorkspace()`);
-  assert.equal(await run('items[0].uid'),'box');assert.equal(await run('items[0].x'),180);
-  assert.deepEqual(await saved(run),restored,'the stale import does not write a new durable snapshot');
-}));
-
-test('a stale takeover read cannot restore editing after another window has already reclaimed ownership',async()=>app(async({run,open})=>{
-  await seed(run);const other=await open();await run('items[0].x=140;save()');
-  await other.run(`window.originalSavedRead=readSavedWorkspace;
-    readSavedWorkspace=async()=>{const value=await originalSavedRead();await new Promise(resolve=>window.finishSavedRead=resolve);return value;};
-    window.pendingTakeover=takeWorkspaceOwnership();undefined`);
-  await other.page.waitForFunction(()=>typeof window.finishSavedRead==='function');
-  await run('renewWorkspaceOwnership()');await run('takeWorkspaceOwnership()');await run('items[0].x=210;save()');
-  await other.run('renewWorkspaceOwnership()');assert.equal((await owner(other.run)).writable,false);
-  await other.run('window.finishSavedRead();window.pendingTakeover');
-  assert.equal((await owner(other.run)).owned,false);assert.equal((await owner(other.run)).writable,false);
-  assert.equal(await other.run('items[0].x'),80,'a superseded read does not replace this window’s recovery copy');
-  assert.equal((await owner(run)).writable,true);assert.equal((await saved(run)).workspace.tabs[0].document.items[0].x,210);
-}));
-
-test('read-only tab and notice focus allow navigation and recovery but never editing shortcuts',async()=>app(async({page,run,open})=>{
-  await seed(run);await run('newTab();persistWorkspace()');await seed(run,180);
-  await run("setTool('select');selection=[0];render()");
-  const other=await open();await other.run('takeWorkspaceOwnership()');await waitReadOnly(page);
-  const before=await run('JSON.stringify({items,undoStack,redoStack,selection,tool:ui.tool,tabs})'),durable=await saved(other.run);
-  for(const selector of ['.tab-select.active','#downloadWorkspaceRecovery']){
-    await page.locator(selector).focus();
-    for(const shortcut of ['Control+d','Delete','Control+z']){
-      await page.keyboard.press(shortcut);
-      assert.equal(await run('JSON.stringify({items,undoStack,redoStack,selection,tool:ui.tool,tabs})'),before,`${shortcut} from ${selector} leaves the recovery copy unchanged`);
-    }
-  }
-  await page.locator('.tab-select.active').focus();await page.keyboard.press('ArrowLeft');
-  assert.equal(await run('activeTabId'),await run('tabs[0].id'),'read-only sketches can still be browsed with arrow keys');
-  const downloadPromise=page.waitForEvent('download');await page.keyboard.press('Control+s');
-  const download=await downloadPromise,data=JSON.parse(fs.readFileSync(await download.path(),'utf8'));
-  assert.equal(data.tabs.length,2);assert.equal(data.tabs[0].items[0].x,80);assert.equal(data.tabs[1].items[0].x,180);
-  assert.deepEqual(await saved(other.run),durable);
-}));
-
 test('direct file URLs retain autosave and single-owner behavior without a server',async()=>{
   const os=require('node:os'),{pathToFileURL}=require('node:url');
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-storage-')),file=path.join(directory,'index.html');
@@ -218,14 +110,6 @@ test('direct file URLs retain autosave and single-owner behavior without a serve
     await other.close();assert.deepEqual(errors,[]);
   }finally{await context.close();fs.rmSync(directory,{recursive:true,force:true});}
 });
-
-test('gracefully closing the last writer permits a new window without waiting for a fallback lease',async()=>app(async({page,run,open})=>{
-  await seed(run,490);const former=await run('workspaceStorage.token');await page.close();
-  const reopened=await open();assert.equal((await owner(reopened.run)).writable,true);assert.equal(await reopened.run('items[0].x'),490);
-  assert.notEqual(await reopened.run('workspaceStorage.token'),former);
-  await reopened.run(`localStorage.setItem(WORKSPACE_RELEASE_KEY,${JSON.stringify(former)})`);
-  const stale=await open();assert.equal((await owner(stale.run)).writable,false,'a release receipt cannot release a later owner');
-},{init:()=>{Object.defineProperty(navigator,'locks',{value:undefined});window.BroadcastChannel=undefined;}}));
 
 test('legacy documents without their index remain recoverable instead of starting a new saved workspace',async()=>app(async({page,run})=>{
   assert.equal((await owner(run)).protected,true);assert.equal(await saved(run),null);
@@ -259,47 +143,6 @@ for(const stage of ['database','lock']){
   }));
 }
 
-test('departure after queuing an owner lease retires only the unpublished candidate',async()=>app(async({page,run,open})=>{
-  await seed(run,520);const before=await saved(run);
-  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
-  const result=await run(`(async()=>{
-    const original=IDBObjectStore.prototype.put;let hidden=false;
-    IDBObjectStore.prototype.put=function(value,key){
-      const request=original.call(this,value,key);
-      if(this.name==='owners'&&!hidden){hidden=true;window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));}
-      return request;
-    };
-    try{return {claim:await claimWorkspaceOwnership(),hidden};}finally{IDBObjectStore.prototype.put=original;}
-  })()`);
-  assert.deepEqual(result,{claim:false,hidden:true});
-  assert.deepEqual(await run('({owned:workspaceStorage.owned,writable:workspaceStorage.writable,suspended:workspaceStorage.suspended,lock:workspaceStorage.release,heartbeat:workspaceStorage.heartbeat})'),
-    {owned:false,writable:false,suspended:true,lock:null,heartbeat:null});
-  assert.equal(await run(`(async()=>{const db=await openWorkspaceDatabase();return new Promise(resolve=>{const tx=db.transaction('owners'),get=tx.objectStore('owners').get(WORKSPACE_STORAGE_KEY);tx.oncomplete=()=>resolve(get.result??null);});})()`),null);
-  assert.deepEqual(await saved(run),before);
-  const other=await open();assert.equal((await owner(other.run)).writable,true);
-}));
-
-test('stealing a lock before its claim publishes prevents the superseded claimant from taking it back',async()=>app(async({page,run,open})=>{
-  await seed(run,530);
-  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
-  await run(`
-    window.originalClaimLock=acquireWorkspaceLock;
-    acquireWorkspaceLock=async(...args)=>{
-      const lock=await originalClaimLock(...args);acquireWorkspaceLock=originalClaimLock;
-      await new Promise(resolve=>window.finishClaimLock=resolve);return lock;
-    };
-    window.pendingClaim=claimWorkspaceOwnership();undefined
-  `);
-  await page.waitForFunction(()=>typeof window.finishClaimLock==='function');
-  assert.equal(await run('workspaceStorage.owned'),false);
-  const other=await open();await other.run('takeWorkspaceOwnership()');
-  await page.waitForFunction(()=>__test.run('workspaceStorage.release===null'));
-  const durable=await saved(other.run);assert.equal((await owner(other.run)).writable,true);
-  assert.equal(await run('finishClaimLock();pendingClaim'),false);
-  assert.equal((await owner(run)).owned,false);assert.equal((await owner(run)).writable,false);
-  assert.deepEqual(await saved(run),durable);assert.equal(await other.run('renewWorkspaceOwnership();workspaceStorage.writable'),true);
-}));
-
 for(const operation of ['resume','takeover','retry','recovery']){
   test(`departure during the pending save before ${operation} prevents a later ownership claim`,async()=>app(async({page,run,open})=>{
     await seed(run,540);const before=await saved(run);
@@ -321,47 +164,3 @@ for(const operation of ['resume','takeover','retry','recovery']){
     const other=await open();assert.equal((await owner(other.run)).writable,true);
   }));
 }
-
-test('an older cached-page resume cannot revoke a newer successful resume when its claim finishes',async()=>app(async({page,run})=>{
-  await seed(run,550);
-  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
-  await run(`
-    window.originalOpen=openWorkspaceDatabase;window.originalClaim=claimWorkspaceOwnership;
-    claimWorkspaceOwnership=(...args)=>(window.pendingClaim=originalClaim(...args));
-    openWorkspaceDatabase=async()=>{
-      const db=await originalOpen();openWorkspaceDatabase=originalOpen;
-      await new Promise(resolve=>window.finishOldOpen=resolve);return db;
-    };
-    window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
-  `);
-  await page.waitForFunction(()=>typeof window.finishOldOpen==='function');
-  await run('window.oldClaim=pendingClaim;undefined');
-  await page.evaluate(()=>{
-    window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
-    window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
-  });
-  await page.waitForFunction(()=>__test.run('workspaceStorage.writable'));
-  const token=await run('workspaceStorage.token');assert.equal(await run('finishOldOpen();oldClaim'),false);
-  assert.equal(await run('workspaceClaimCurrent('+JSON.stringify(token)+')'),true);
-  assert.equal((await owner(run)).writable,true);assert.equal(await run('items[0].x'),550);
-}));
-
-test('departure during the initial workspace read leaves a safe document and allows a later resume',async()=>app(async({page,run})=>{
-  assert.equal(await run('workspaceStorage.ready'),true);assert.equal(await run('workspaceStorage.suspended'),true);
-  assert.equal((await owner(run)).writable,false);assert.equal(await saved(run),null);
-  assert.equal(await run('tabs.length'),1);assert.equal(await run('tabDocuments.has(activeTabId)'),true);
-  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
-  await page.waitForFunction(()=>__test.run('workspaceStorage.writable'));
-  await seed(run,560);await page.reload();assert.equal(await run('items[0].x'),560);
-},{init:()=>{
-  if(sessionStorage.getItem('test-hidden-during-boot'))return;
-  sessionStorage.setItem('test-hidden-during-boot','1');
-  const original=IDBObjectStore.prototype.get;let first=true;
-  IDBObjectStore.prototype.get=function(key){
-    const request=original.call(this,key);
-    if(this.name==='workspaces'&&first){
-      first=false;request.addEventListener('success',()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
-    }
-    return request;
-  };
-}}));

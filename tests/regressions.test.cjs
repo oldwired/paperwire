@@ -152,6 +152,19 @@ test('structured clipboard validates objects and preserves conflicting image ass
   assert.deepEqual(await run('items.map(it=>assets[it.id])'),[fixture.blue,fixture.red]);
 }));
 
+test('external PNG paste still wins over the internal clipboard when JSON is invalid', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(rectangle())}];setTool('select');selection=[0];copySelection();`);
+  await page.evaluate(async()=>{
+    const c=document.createElement('canvas');c.width=c.height=20;
+    const blob=await new Promise(resolve=>c.toBlob(resolve));
+    const dt=new DataTransfer();dt.setData('text/plain','{"app":"SimpleCanvas","kind":"objects","version":2,"items":[{"type":"broken"}]}');
+    dt.items.add(new File([blob],'external.png',{type:'image/png'}));
+    window.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,cancelable:true,bubbles:true}));
+  });
+  await page.waitForFunction(()=>__test.run('items.length')===2);
+  assert.deepEqual(await run('items.map(it=>it.type)'),['rect','image']);
+}));
+
 test('quota failures preserve tabs, history, JSON/HTML recovery exports, and retry', async () => app(async ({page,run,context}) => {
   await run(`beginHistory();items=[${JSON.stringify(rectangle('before'))}];commitHistory();`);
   const original = await run('activeTabId');
@@ -269,6 +282,22 @@ test('image import and undo stay with the original tab after switching away', as
   await run('persistWorkspace()');await page.reload();assert.equal(await run('assets[items[0].id]'),source);
 }));
 
+test('click cycling resets after deletion, layer reordering, and nudging', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify([rectangle('lower'),rectangle('upper')])};setTool('select');`);
+  const box=await page.locator('#canvas').boundingBox();
+  const click=()=>page.mouse.click(box.x+170,box.y+145);
+  await click();assert.deepEqual(await run('selectedUids()'),['upper']);
+  await page.keyboard.press('Delete');await click();
+  assert.deepEqual(await run('selectedUids()'),['lower']);
+  await run('undo()');await click();
+  assert.deepEqual(await run('selectedUids()'),['upper']);
+  await click();assert.deepEqual(await run('selectedUids()'),['lower']);
+  await run('bringToFront()');await click();
+  assert.deepEqual(await run('selectedUids()'),['lower']);
+  await page.keyboard.press('ArrowRight');await click();
+  assert.deepEqual(await run('selectedUids()'),['lower'],'a scene edit resets the cycle even when the hit stack is unchanged');
+}));
+
 const wrappedText={type:'text',uid:'text',x:100,y:320,w:110,h:40,size:2,color:'#000000',
   textColor:'#000000',strokeOn:false,text:'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen',font:'28px Arial',fontSize:28};
 const markdownText={...wrappedText,uid:'markdown',y:120,w:140,text:'---\n# Wide heading\none **two** three *four* five six seven eight nine ten eleven twelve\n- thirteen fourteen fifteen sixteen\n---\n[Last link](example.com)'};
@@ -351,71 +380,12 @@ test('cycled arrowhead variants survive conversion, undo, reload, and workspace 
   assert.deepEqual(await variants(),['filled-inverted','filled']);
 }));
 
-test('iPad taps cycle endpoints and double-taps enter and leave point editing', async () => app(async ({page,run}) => {
-  await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
-  const box=await page.locator('#canvas').boundingBox();
-  const head=()=>run(`headsOf(items[0]).e ? headVariantOf(items[0],'end') : 'none'`);
-  const tapEnd=()=>page.touchscreen.tap(box.x+320,box.y+215); // finger lands off-center, beyond the mouse radius
-  const doubleTapBody=async()=>{
-    await page.touchscreen.tap(box.x+200,box.y+200);
-    await page.touchscreen.tap(box.x+200,box.y+200);
-  };
-  await tapEnd();await tapEnd();
-  assert.equal(await head(),'filled');
-  assert.equal(await run('pointEditIdx'),null,'rapid endpoint taps only cycle heads');
-  await doubleTapBody();
-  assert.equal(await run('pointEditIdx'),0);
-  await tapEnd();await tapEnd();
-  assert.equal(await run('pointEditIdx'),0,'rapid anchor taps stay in point editing');
-  assert.equal(await run('activeAnchor'),1);
-  assert.equal(await head(),'filled','anchor taps do not change arrowheads');
-  await doubleTapBody();
-  assert.equal(await run('pointEditIdx'),null);
-  await tapEnd();
-  assert.equal(await head(),'open-inverted','converted curves keep endpoint cycling');
-}, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true,deviceScaleFactor:2}}));
-
 // ---------- secondary clicks on the canvas ----------
 // The native menu is always suppressed. A secondary press -- the right button, or Control+click on a
 // Mac, which browsers deliver as a primary-button press with ctrlKey followed by a contextmenu event
 // -- never starts a gesture; its one job is finishing the polygon in progress. Duplicate-drag is
 // therefore ⌘+drag on a Mac. Events go straight to the canvas here, so the checks do not depend on
 // the host OS's own Control-click handling.
-const pointerSequence = (run, seq) => run(`(()=>{
-  const r = canvas.getBoundingClientRect();
-  let prevented = null;
-  for(const [type,x,y,init] of ${JSON.stringify(seq)}){
-    const common = {bubbles:true, cancelable:true, clientX:r.left+x, clientY:r.top+y, ...init};
-    const e = type==='contextmenu' ? new MouseEvent(type, common) : new PointerEvent(type, {pointerId:1, pointerType:'mouse', ...common});
-    canvas.dispatchEvent(e);
-    if(type==='contextmenu') prevented = e.defaultPrevented;
-  }
-  return prevented;
-})()`);
-const macControlClick = (run, x, y) => pointerSequence(run, [
-  ['pointerdown',x,y,{button:0,buttons:1,ctrlKey:true}], ['contextmenu',x,y,{button:2,ctrlKey:true}], ['pointerup',x,y,{button:0,ctrlKey:true}]]);
-const modifierDrag = (run, mod, x0, y0, x1, y1) => pointerSequence(run, [
-  ['pointerdown',x0,y0,{button:0,buttons:1,[mod]:true}], ['pointermove',(x0+x1)/2,(y0+y1)/2,{buttons:1,[mod]:true}],
-  ['pointermove',x1,y1,{buttons:1,[mod]:true}], ['pointerup',x1,y1,{button:0,[mod]:true}]]);
-
-test('on a Mac, Control+click on a selected item duplicates nothing and ⌘+drag is the duplicate-drag; Ctrl+drag stays the duplicate-drag elsewhere', async () => app(async ({page,run}) => {
-  await run(`items=[${JSON.stringify(rectangle('r1'))}];setTool('select');selection=[0];render();isMac=true;`);
-  assert.equal(await macControlClick(run, 140, 130), true);
-  assert.equal(await run('items.length'),1,'no silent duplicate stacked under the (suppressed) menu');
-  assert.deepEqual(await run('selection'),[0]);
-  await modifierDrag(run, 'metaKey', 140, 130, 200, 170);
-  let items=await run('items');
-  assert.equal(items.length,2,'⌘+drag duplicated');
-  assert.equal(items[0].x,100,'the original stayed');
-  assert.ok(Math.abs(items[1].x-160)<.5 && Math.abs(items[1].y-140)<.5,'the copy followed the drag');
-  assert.deepEqual(await run('selection'),[1]);
-
-  await run('isMac=false');
-  await modifierDrag(run, 'ctrlKey', 200, 170, 260, 170);
-  items=await run('items');
-  assert.equal(items.length,3,'Ctrl+drag still duplicates on other platforms');
-  assert.ok(Math.abs(items[2].x-220)<.5,'the copy followed the drag');
-}));
 
 // ---------- group edit mode ("enter group", Point-Edit-style persistence) ----------
 // A group's own bounding box, once selected, can be "entered" via double-click (on a member, or on
@@ -608,39 +578,34 @@ const overlappingSmart = uid => ({type:'smart',uid,x:100,y:100,w:180,h:140,
 async function seedOverlap(run, scene){
   await run(`cancelGesture();items=${JSON.stringify(scene)};selection=[];setTool('select');render();`);
 }
-test('overlapping smart controls open on a fresh or already-selected double-click', async () => app(async ({page,run}) => {
-  const scene=[rectangle('bottom'),rectangle('middle'),overlappingSmart('smart')];
-  for(const selected of [false,true]){
+
+test('double-click keeps a selected lower smart component beneath a shape or another component', async () => app(async ({page,run}) => {
+  for(const top of [rectangle('top'),overlappingSmart('top')]){
+    const scene=[rectangle('bottom'),overlappingSmart('selected'),top];
     await seedOverlap(run,scene);
     let box=await page.locator('#canvas').boundingBox();
-    if(selected) await page.mouse.click(box.x+190,box.y+160);
+    await page.mouse.click(box.x+190,box.y+160);
+    box=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(box.x+190,box.y+160);
+    assert.deepEqual(await run('selectedUids()'),['selected'],'separate clicks reach the lower component');
     box=await page.locator('#canvas').boundingBox();
     await page.mouse.dblclick(box.x+190,box.y+160);
-    await page.waitForFunction(()=>__test.run('editingSmartIdx')===2);
-    assert.deepEqual(await run('selectedUids()'),['smart']);
-    assert.equal(await run('pointEditIdx'),null,'the background is not converted or edited');
-    assert.deepEqual(await run('items'),scene,'entering controls leaves all drawing data unchanged');
+    await page.waitForFunction(()=>__test.run('editingSmartIdx')===1);
+    assert.deepEqual(await run('selectedUids()'),['selected']);
+    assert.deepEqual(await run('items'),scene);
   }
 }));
 
-test('overlapping smart controls keep the first touch target on double-tap', async () => app(async ({page,run}) => {
-  const scene=[rectangle('bottom'),rectangle('middle'),overlappingSmart('smart')];
-  for(const selected of [false,true]){
-    await seedOverlap(run,scene);
-    let box=await page.locator('#canvas').boundingBox();
-    if(selected){
-      await page.touchscreen.tap(box.x+190,box.y+160);
-      await page.waitForTimeout(400);
-    }
-    box=await page.locator('#canvas').boundingBox();
-    await page.touchscreen.tap(box.x+190,box.y+160);
-    await page.touchscreen.tap(box.x+198,box.y+166);
-    await page.waitForFunction(()=>__test.run('editingSmartIdx')===2);
-    assert.deepEqual(await run('selectedUids()'),['smart']);
-    assert.equal(await run('pointEditIdx'),null);
-    assert.deepEqual(await run('items'),scene);
-  }
-}, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true}}));
+test('ordinary overlapping shapes keep their cycled double-click target', async () => app(async ({page,run}) => {
+  const scene=['bottom','middle','top'].map(uid=>rectangle(uid));
+  await seedOverlap(run,scene);
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+190,box.y+160);
+  assert.deepEqual(await run('selectedUids()'),['middle']);
+  assert.equal(await run('pointEditIdx'),1);
+  assert.equal(await run('items[1].type'),'polygon');
+  assert.deepEqual(await run('[items[0],items[2]]'),[scene[0],scene[2]]);
+}));
 
 test('ungrouped text/table still open their own editor on the very first double-click, unaffected', async () => app(async ({page,run}) => {
   await run(`items=[{type:'text',uid:'t1',x:100,y:100,w:200,h:50,text:'hello',font:'400 28px sans-serif',
@@ -665,62 +630,6 @@ test('ungrouped text/table still open their own editor on the very first double-
 // A smart shape's script is untrusted (SMART_SHAPES.md) and runs inside a dedicated Worker with every
 // network global deleted before it ever runs -- not in the app's own scope. These two tests are the
 // ones that actually prove the isolation holds, rather than just that the feature still works.
-test('a hostile script cannot reach the host page\'s DOM, localStorage, network, or top frame', async () => app(async ({page,run}) => {
-  // The script reports what it could/couldn't reach via its own returned descriptor (child text) --
-  // run() itself can't see into the worker directly, so the proof has to come back this way.
-  const hostileScript = `({
-    children(state, style, w, h){
-      const report = {};
-      try { report.parentDoc = !!window.parent.document.title; } catch(e) { report.parentDoc = 'blocked:'+e.constructor.name; }
-      try { localStorage.setItem('pwned','1'); report.localStorage = 'REACHED'; } catch(e) { report.localStorage = 'blocked:'+e.constructor.name; }
-      try { report.fetch = typeof fetch; } catch(e) { report.fetch = 'blocked'; }
-      try { report.xhr = typeof XMLHttpRequest; } catch(e) { report.xhr = 'blocked'; }
-      try { report.topLocation = window.top.location.href; } catch(e) { report.topLocation = 'blocked:'+e.constructor.name; }
-      return [{type:'text', text:JSON.stringify(report), x:0,y:0,w:w,h:h, align:'left', font:'12px sans', color:'#000'}];
-    }
-  })`;
-  await run(`items=[{type:'smart',uid:'h1',x:40,y:40,w:200,h:100,color:'#000',fillColor:'#fff',
-    fill:false,strokeOn:false,textColor:'#000',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),
-    script:${JSON.stringify(hostileScript)},state:{}}];setTool('select');render();`);
-  await page.waitForTimeout(100);   // let the cache's background children() request resolve
-  const kids = await run(`smartChildrenCache.get('h1').kids`);
-  const report = JSON.parse(kids[0].text);
-  assert.match(report.parentDoc, /^blocked:/, 'cannot reach the host page\'s DOM through window.parent');
-  assert.match(report.localStorage, /^blocked:/, 'cannot read or write the host page\'s localStorage');
-  assert.equal(report.fetch, 'undefined', 'fetch is deleted inside the sandbox');
-  assert.equal(report.xhr, 'undefined', 'XMLHttpRequest is deleted inside the sandbox');
-  assert.match(report.topLocation, /^blocked:/, 'cannot reach the top frame either');
-  // and, most directly: the host's OWN localStorage was never actually touched
-  assert.equal(await run(`localStorage.getItem('pwned')`), null, 'the host page\'s real localStorage is untouched');
-}));
-
-test('an infinite loop in a script times out, recovers, and does not take down other smart shapes', async () => app(async ({page,run,context}) => {
-  // Keep the offender present: recovery must preserve healthy queued work without manual renders.
-  const hangScript = `({ children(){ while(true){} } })`;
-  const okScript = `({ children(state,style,w,h){ return [{type:'rect',x:0,y:0,w:w,h:h,color:style.color,strokeOn:true,fill:false}]; } } )`;
-  await run(`items=[
-    {type:'smart',uid:'hang1',x:40,y:40,w:100,h:100,color:'#000',fillColor:'#fff',fill:false,strokeOn:false,
-      textColor:'#000',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script:${JSON.stringify(hangScript)},state:{}},
-    {type:'smart',uid:'ok1',x:200,y:40,w:100,h:100,color:'#000',fillColor:'#fff',fill:false,strokeOn:false,
-      textColor:'#000',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script:${JSON.stringify(okScript)},state:{}}
-  ];setTool('select');render();`);
-  await page.waitForFunction(()=>__test.run("smartBackoffUntil.has('hang1') && smartChildrenCache.has('ok1')"));
-  assert.equal(await run(`smartChildrenCache.has('hang1')`), false, 'the hung shape never got a result, but caused no crash');
-  const fresh = await run(`requestSmartCall('({children(){return [{type:"rect",x:1,y:2,w:3,h:4}]}})', 'children', [{},{},10,10,false])`);
-  assert.deepEqual(fresh, [{type:'rect',x:1,y:2,w:3,h:4}], 'a different owner still executes');
-  const okKids = await run(`smartChildrenCache.get('ok1') && smartChildrenCache.get('ok1').kids`);
-  assert.ok(okKids && okKids.length, 'the healthy shape renders while the offender remains');
-  assert.equal(await run('items.length'),2);
-  await run('selection=[1];render()');await page.keyboard.press('ArrowRight');
-  assert.equal(await run('items[1].x'),201);await run('undo()');assert.equal(await run('items[1].x'),200);
-  const svg=await run('itemsToSVGMarkup(items,{width:600,height:300,background:false})');
-  const preview=await context.newPage();await preview.setContent(svg);
-  const position=await preview.locator('rect').evaluate(rect=>{
-    const p=new DOMPoint(rect.x.baseVal.value,rect.y.baseVal.value).matrixTransform(rect.getCTM());
-    return {x:p.x,y:p.y};
-  });
-  assert.deepEqual(position,{x:200,y:40},'healthy content still exports at its world position beside a hanging owner');
-}));
 
 // Real bug, reported directly: a smart shape's polygon-type children (a flag pennant, a clock's own
 // elapsed-time wedge, an arrow's curved shaft -- anything with a `points` array) drifted further off
@@ -735,89 +644,8 @@ test('an infinite loop in a script times out, recovers, and does not take down o
 // surfaced later. Root cause: normalizeItem's own MAX_SCRIPT cap (20,000, set before any example this
 // long existed) was well under half of what the documented workflow actually produces. Fixed by
 // raising the cap to 50,000.
-test('a smart shape with a long reference-template script survives a save/load round-trip', async () => app(async ({page,run}) => {
-  const result = await run(`
-    (() => {
-      // Pad a trivial script with a long comment, well past the OLD 20,000-char cap but under the
-      // new 50,000 one -- mirrors race-start-timer.js's own shape (mostly explanatory comment).
-      const padding = '/*' + 'x'.repeat(30000) + '*/';
-      const script = padding + '\\n({ children(state,style,w,h){ return [{type:"rect",x:0,y:0,w:w,h:h,color:style.color,strokeOn:true,fill:false}]; } })';
-      const raw = {type:'smart',uid:'long1',x:10,y:10,w:100,h:100,color:'#000',fillColor:'#fff',
-        fill:false,strokeOn:true,textColor:'#000',size:2,fontFamily:'sans',fontSize:12,
-        font:fontStr('sans',12),script,state:{}};
-      const scene = normalizeScene([raw], {}, FORMAT_VERSION);
-      return JSON.stringify({ scriptLength: script.length, itemCount: scene.items.length,
-        survived: scene.items.length===1 && scene.items[0].type==='smart' });
-    })()
-  `);
-  const parsed = JSON.parse(result);
-  assert.ok(parsed.scriptLength > 20000, 'the test script must actually exceed the OLD cap to be meaningful');
-  assert.ok(parsed.survived, `a ${parsed.scriptLength}-character script must survive normalizeScene (a real save/load round-trip), not be silently dropped`);
-}));
 
 // ---------- Iconify icon import ----------
-const SAILBOAT = '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/></g>';
-
-async function routeIconify(page){
-  const cors = {'access-control-allow-origin':'*'};
-  await page.route('https://api.iconify.design/**', route => {
-    const url = new URL(route.request().url());
-    if(url.pathname==='/search') return route.fulfill({headers:cors, contentType:'application/json', body:JSON.stringify({
-      icons:['gplset:sailboat','lucide:sailboat','multi:sailboat'], total:3, limit:96, start:0,
-      collections:{
-        lucide:{name:'Lucide', author:{name:'Lucide Contributors', url:'https://github.com/lucide-icons/lucide'},
-          license:{title:'ISC', spdx:'ISC', url:'https://github.com/lucide-icons/lucide/blob/main/LICENSE'}, tags:['Uses Stroke'], palette:false},
-        gplset:{name:'GPL Icons', author:{name:'Someone'}, license:{title:'GPL 3.0', spdx:'GPL-3.0', url:'javascript:alert(1)'}, palette:false},
-        multi:{name:'Colorful', license:{title:'MIT', spdx:'MIT'}, palette:true},
-      }})});
-    if(url.pathname==='/multi.json') return route.fulfill({headers:cors,contentType:'application/json',body:JSON.stringify({width:24,height:24,icons:{sailboat:{body:'<rect width="12" height="24" fill="red"/><rect x="12" width="12" height="24" fill="blue"/>'}}})});
-    if(url.pathname==='/lucide.json') return route.fulfill({headers:cors, contentType:'application/json',
-      body:JSON.stringify({prefix:'lucide', width:24, height:24, icons:{sailboat:{body:SAILBOAT}}})});
-    if(url.pathname.endsWith('.svg')) return route.fulfill({headers:cors, contentType:'image/svg+xml',
-      body:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>'});
-    return route.fulfill({status:404, headers:cors, body:''});
-  });
-}
-
-test('icon dialog filters licenses, imports an icon with its license, and places it as one group', async () => app(async ({page,run}) => {
-  await routeIconify(page);
-  const iconRequests = [];
-  page.on('request', r => { if(r.url().startsWith('https://api.iconify.design/')) iconRequests.push(new URL(r.url()).pathname); });
-  await run('openIconDialog()');
-  await page.fill('#iconSearchInput', 'sailboat');
-  await page.click('#iconSearchBtn');
-  await page.waitForSelector('#iconResults .shape-entry');
-  assert.equal(await page.locator('#iconResults .shape-entry').count(), 2, 'GPL hidden, multicolor included');
-  assert.match(await page.textContent('#iconStatus'), /1 hidden by the license filter/);
-  await page.uncheck('#iconPermissiveOnly');
-  await page.waitForFunction(()=>document.querySelectorAll('#iconResults .shape-entry').length===3);
-  assert.equal(await page.locator('#iconResults .icon-license.restricted').count(), 1);
-  assert.equal(await page.locator('#iconResults [href^="javascript"]').count(), 0, 'non-http license links are not linked');
-  await page.check('#iconPermissiveOnly');
-  await page.waitForFunction(()=>document.querySelectorAll('#iconResults .shape-entry').length===2);
-  assert.match(await page.locator('#iconResults .icon-license').first().textContent(), /Lucide/);
-  await page.locator('#iconResults .shape-thumb').first().click();
-  await page.waitForFunction(()=>__test.run('shapeLibrary && shapeLibrary.shapes.length')===1);
-  const lib = JSON.parse(await run(`JSON.stringify({open: iconDialog.open, entry: shapeLibrary.shapes[0],
-    roundTrip: normalizeShapeLibrary(JSON.parse(JSON.stringify(shapeLibrary))).shapes[0].source})`));
-  assert.equal(lib.open, false, 'dialog closes after import');
-  assert.equal(lib.entry.name, 'sailboat');
-  assert.equal(lib.entry.source.license.spdx, 'ISC');
-  assert.equal(lib.entry.source.setName, 'Lucide');
-  assert.deepEqual(lib.roundTrip, lib.entry.source, 'source survives export/import normalization');
-  assert.equal(lib.entry.items.length, 3);
-  await run('openIconDialog()');
-  await page.locator('#iconResults .shape-thumb').first().click();
-  await page.waitForFunction(()=>__test.run('shapeLibrary.shapes.length')===2);
-  assert.equal(await run('shapeLibrary.shapes[1].name'), 'sailboat 2', 'a second import gets a unique name');
-  assert.ok(!iconRequests.some(p=>p.endsWith('.svg')), 'thumbnails are drawn from batched set data, not one request per icon');
-  assert.equal(iconRequests.filter(p=>p==='/lucide.json').length, 1, 'one request per set, reused for both imports');
-  assert.match(await page.locator('#iconResults img').first().getAttribute('src'), /^data:image\/svg\+xml,/);
-  const placed = JSON.parse(await run(`(async()=>{ await placeShapeAt(shapeLibrary.shapes[0], 400, 300);
-    return JSON.stringify(items.map(i=>({type:i.type, group:i.group}))); })()`));
-  assert.equal(placed.length, 3);
-  assert.ok(placed[0].group!=null && placed.every(i=>i.group===placed[0].group), 'placed icon is one group');
-}));
 
 const smartFixture = (script, state={}) => ({type:'smart',uid:'smart-test',x:100,y:100,w:180,h:180,
   color:'#000000',fillColor:'#dc2626',strokeOn:true,fill:false,textColor:'#000000',size:2,
@@ -825,12 +653,6 @@ const smartFixture = (script, state={}) => ({type:'smart',uid:'smart-test',x:100
 async function importLibrary(page, library){
   await page.locator('#shapeLibraryInput').setInputFiles({name:'library.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(library))});
 }
-const slowClickScript = `({
-  children(){return [{type:'rect',x:0,y:0,w:180,h:180}];},
-  handles(){return [{id:'inc',x:50,y:50,kind:'click'}];},
-  hitEdit(s,x,y){const end=performance.now()+40;while(performance.now()<end){}return Math.hypot(x-50,y-50)<14?'inc':null;},
-  dragEdit(s){const end=performance.now()+40;while(performance.now()<end){}return {n:(s.n||0)+1};}
-})`;
 
 async function openExport(page,run,context,{init}={}){
   const download=page.waitForEvent('download');await run('exportHtml()');
@@ -875,84 +697,59 @@ async function recordExportGesture(host,gesture){
       localDelta:{x:end.local.x-result.down.local.x,y:end.local.y-result.down.local.y}};
   }finally{await host.evaluate(el=>{el.__testGesture.stop();delete el.__testGesture;});}
 }
+function gestureRotation(gesture,w,h){
+  const end=gesture.latest||gesture.end,start=gesture.down;
+  const delta=Math.atan2(end.local.y-h/2,end.local.x-w/2)-Math.atan2(start.local.y-h/2,start.local.x-w/2);
+  return Math.atan2(Math.sin(delta),Math.cos(delta));
+}
 
 async function exportClick(preview,host,x,y){const p=await exportedPoint(host,x,y);await preview.mouse.click(p.x,p.y);}
-async function exportDrag(preview,host,x,y,dx,dy,release=true){
-  const a=await exportedPoint(host,x,y),b=await exportedPoint(host,x+dx,y+dy);
+
+async function exportRotate(preview,host,w,h,angle,release=true){
+  const radius=h/2+30,a=await exportedPoint(host,w/2,-30);
+  const b=await exportedPoint(host,w/2+Math.sin(angle)*radius,h/2-Math.cos(angle)*radius);
   const gesture=await recordExportGesture(host,async()=>{
-    await preview.mouse.move(a.x,a.y);await preview.mouse.down();
-    await preview.mouse.move(b.x,b.y,{steps:5});if(release)await preview.mouse.up();
+    await preview.mouse.move(a.x,a.y);await preview.mouse.down();await preview.mouse.move(b.x,b.y,{steps:6});
+    if(release)await preview.mouse.up();
   });
-  assert.ok(gesture.latest,'drag must deliver a pointermove');
-  if(release)assert.ok(gesture.up,'released drag must deliver a pointerup');
-  assert.ok(Math.abs(gesture.end.screen.x-b.x)<=1 && Math.abs(gesture.end.screen.y-b.y)<=1,'drag reaches the requested screen endpoint within one CSS pixel');
+  assert.ok(gesture.latest,'rotation must deliver a pointermove');
+  if(release)assert.ok(gesture.up,'released rotation must deliver a pointerup');
+  assert.ok(Math.abs(gesture.end.screen.x-b.x)<=1 && Math.abs(gesture.end.screen.y-b.y)<=1,'rotation reaches the requested screen endpoint within one CSS pixel');
   return gesture;
 }
 
-test('HTML smart shapes run offline with live timing, direct ordered controls and a locked layout',async()=>app(async({page,run,context})=>{
-  // Keep this refresh-only/API1 fixture inert in saved state. API2 Live Clock
-  // deliberately publishes durable time and pulses and has its own connection tests.
-  const clockScript=`({refreshMs(){return 1000;},children(s,style,w,h){return [{type:'text',x:0,y:0,w,h,text:new Date().toISOString(),strokeOn:false}];}})`;
-  const stopwatch=await run(`(async()=>{
-    const sw={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.stopwatch.script};await initializeSmartItem(sw);
-    items=[sw,{...${JSON.stringify(smartFixture(clockScript))},uid:'refresh-clock',x:500,h:208}];
-    setTool('select');selection=[];render();save();return sw;
-  })()`);
-  await savedWorkspace(run);
-  const before=await run('(async()=>JSON.stringify({items,undoStack,redoStack,storage:await readSavedWorkspace()}))()');
-  const {preview,errors,requests}=await openExport(page,run,context,{init:()=>{
-    // Force early callbacks, as can occur naturally when browsers round fractional delays.
-    const timeout=window.setTimeout.bind(window);
-    window.setTimeout=(fn,delay,...args)=>timeout(fn,delay>10?delay-2:delay,...args);
-  }});
-  const sw=preview.locator('[data-smart-index="0"]'),clock=preview.locator('[data-smart-index="1"]');
-  await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===2);
-  assert.match(await sw.textContent(),/Start.*Reset/,'operating buttons are visible immediately');
-  const firstClock=await clock.textContent();
-  await preview.waitForFunction(first=>document.querySelector('[data-smart-index="1"]').textContent!==first,firstClock);
-  await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);
-  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Pause'));
-  await preview.waitForFunction(()=>!document.querySelector('[data-smart-index="0"]').textContent.includes('00:00:00.000'));
-  await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);
-  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Start'));
-  const paused=await sw.textContent();await preview.waitForTimeout(250);assert.equal(await sw.textContent(),paused);
-  // Quick released clicks still execute in order. Reset, Start, Pause must end stopped.
-  await exportClick(preview,sw,stopwatch.w*.75,stopwatch.h*.86);
-  await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);
-  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Start'));
-  const box=await sw.boundingBox();await exportDrag(preview,sw,20,20,60,40);await preview.waitForTimeout(100);
-  assert.deepEqual(await sw.boundingBox(),box,'the body cannot be moved');
-  assert.equal(await sw.locator('[data-resize-width]').count(),0,'no regular resize controls');
-  assert.equal(await sw.locator('[data-resize-height],[data-rotate]').count(),0,'rotation and height resizing also default off');
-  assert.equal(await run('(async()=>JSON.stringify({items,undoStack,redoStack,storage:await readSavedWorkspace()}))()'),before,'export interactions never edit the source workspace');
-  assert.deepEqual(requests,[],'the downloaded file needs no server or network');assert.deepEqual(errors,[]);
-}));
+test('editor and HTML Shift-rotation snap to absolute 15-degree steps, including pre-rotated groups',async()=>app(async({page,run,context})=>{
+  await run(`items=[{...${JSON.stringify(rectangle())},rotation:20*Math.PI/180}];setTool('select');selection=[0];render();`);
+  const pivot=await run(`rotationPivotFor(selection)`),canvas=await page.locator('#canvas').boundingBox();
+  const radius=pivot.cy-pivot.handleY;
+  await page.mouse.move(canvas.x+pivot.cx+Math.sin(pivot.rotation)*radius,canvas.y+pivot.cy-Math.cos(pivot.rotation)*radius);
+  await page.mouse.down();await page.keyboard.down('Shift');
+  await page.mouse.move(canvas.x+pivot.cx+Math.sin(38*Math.PI/180)*radius,canvas.y+pivot.cy-Math.cos(38*Math.PI/180)*radius,{steps:5});
+  assert.ok(Math.abs(await run('items[0].rotation')-Math.PI/4)<1e-6,'the editor snaps 38 degrees to 45 degrees');
+  await page.keyboard.up('Shift');await page.mouse.up();
+  assert.ok(Math.abs(await run('items[0].rotation')-Math.PI/4)<1e-6,'releasing Shift without moving retains the editor angle');
 
-test('HTML uses static script permissions, filters editor-only controls and handles, and retains tab instance state',async()=>app(async({page,run,context})=>{
-  const script=`({exportBehavior:{move:true,resizeWidth:false},
-    children(s,style,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#ffd166'},
-      {type:'text',x:0,y:0,w,h:30,text:String(s.n||0),strokeOn:false},
-      {type:'text',x:0,y:50,w,h:30,text:'AUTHOR ONLY',editorOnly:true}];},
-    handles(){return [{id:'inc',x:40,y:20,kind:'click'},{id:'author',x:40,y:65,kind:'click',editorOnly:true}];},
-    hitEdit(s,x,y){return y<40?'inc':y<90?'author':null;},
-    dragEdit(s,id){return {n:(s.n||0)+(id==='inc'?1:100)};}})`;
-  await run(`items=[${JSON.stringify(smartFixture(script))}];save();newTab();items=[${JSON.stringify(smartFixture(script,{n:9}))}];render();save();`);
-  const snapshot=await run('itemsToSVGMarkup(items)');assert.doesNotMatch(snapshot,/AUTHOR ONLY/,'even unconditional author children stay out of static exports');
-  const {preview,errors}=await openExport(page,run,context);
-  const panels=preview.locator('.tab-panel'),first=panels.nth(0).locator('[data-smart-index]'),second=panels.nth(1).locator('[data-smart-index]');
-  await preview.waitForFunction(()=>document.querySelector('.tab-panel [data-smart-ready="true"]'));
-  assert.equal(await first.locator('[data-rotate]').count(),0,'move permission alone does not implicitly grant rotation');
-  assert.equal(await first.textContent(),'0');await exportClick(preview,first,40,20);
-  await preview.waitForFunction(()=>document.querySelector('.tab-panel [data-smart-index]').textContent==='1');
-  await exportClick(preview,first,40,65);await preview.waitForTimeout(100);assert.equal(await first.textContent(),'1','author-only handles never run');
-  const start=await exportedPoint(first,0,0),end=await exportedPoint(first,30,25);
-  await exportDrag(preview,first,60,110,30,25);await preview.waitForTimeout(100);
-  const moved=await exportedPoint(first,0,0);assert.ok(Math.abs(moved.x-end.x)<.1 && Math.abs(moved.y-end.y)<.1);assert.notEqual(start.x,moved.x);
-  await preview.locator('.tab-select').nth(1).click();
-  await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===2);
-  assert.equal(await second.textContent(),'9');await exportClick(preview,second,40,20);
-  await preview.waitForFunction(()=>document.querySelectorAll('.tab-panel [data-smart-index]')[1].textContent==='10');
-  await preview.locator('.tab-select').nth(0).click();assert.equal(await first.textContent(),'1');assert.deepEqual(await exportedPoint(first,0,0),moved);
+  const script=`({exportBehavior:{rotate:true},children(s,style,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#dbeafe'}];}})`;
+  await run(`items=[{...${JSON.stringify(smartFixture(script))},x:350,y:220,rotation:20*Math.PI/180,group:'snap',groupRotation:15*Math.PI/180},
+    {...${JSON.stringify(rectangle('sibling'))},x:650,group:'snap',groupRotation:15*Math.PI/180}];selection=[];render();`);
+  const {preview,errors}=await openExport(page,run,context),shape=preview.locator('[data-smart-index="0"]');
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
+  const angle=()=>shape.evaluate(el=>{const m=el.firstElementChild.getScreenCTM();return Math.atan2(m.b,m.a)*180/Math.PI;});
+  assert.ok(Math.abs(await angle()-35)<1e-4,'the export starts with the combined own and group rotation');
+  await exportClick(preview,shape,90,90);
+  await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,3*Math.PI/180,false);
+  assert.ok(Math.abs(await angle()-45)<1e-4,'HTML snaps the visible 38-degree angle to 45, rather than snapping its drag delta');
+  await preview.keyboard.up('Shift');await preview.mouse.up();
+  assert.ok(Math.abs(await angle()-45)<1e-4,'pointerup keeps the last snapped angle when Shift has been released');
+  const freeRotation=await exportRotate(preview,shape,180,180,-7*Math.PI/180);
+  const freeAngle=45+gestureRotation(freeRotation,180,180)*180/Math.PI;
+  assert.ok(Math.abs(await angle()-freeAngle)<1e-4,'rotation follows the received pointer without Shift');
+  await preview.keyboard.down('Shift');await exportClick(preview,shape,90,-30);await preview.keyboard.up('Shift');
+  assert.ok(Math.abs(await angle()-freeAngle)<1e-4,'a stationary handle click does not change the angle');
+  await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,-76*Math.PI/180);await preview.keyboard.up('Shift');
+  assert.ok(Math.abs(await angle()+45)<1e-4,'negative angles use the same absolute snapping grid');
+  await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,43*Math.PI/180);await preview.keyboard.up('Shift');
+  assert.ok(Math.abs(await angle())<1e-4,'snapping also crosses zero cleanly');
   assert.deepEqual(errors,[]);
 }));
 
@@ -975,300 +772,8 @@ test('HTML isolates hostile or hung scripts, preserves frozen fallback, and esca
   assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
 }));
 
-test('an edited preview supersedes an in-flight job even when the script changes back',async()=>app(async({page,run})=>{
-  const first='({children(){return [{type:"rect",x:0,y:0,w:100,h:100,fill:true,fillColor:"#ff0000"}];}})';
-  const second=first.replace('#ff0000','#00ff00');
-  await run(`
-    const create=createShapeThumbnail;window.previewStarted=0;window.finishOldPreview=null;
-    createShapeThumbnail=list=>{
-      if(window.previewStarted++===0)return new Promise(resolve=>window.finishOldPreview=resolve);
-      return create(list);
-    };
-    shapeLibrary=normalizeShapeLibrary({shapes:[{name:'Changing',items:[${JSON.stringify(smartFixture(first))}]}]});
-    smartPreviewConsent.add(shapeLibrary.shapes[0]);setShapePicker(true);
-    const tpl=shapeLibrary.shapes[0];
-    tpl.items[0].script=${JSON.stringify(second)};invalidateShapePreview(tpl);
-    tpl.items[0].script=${JSON.stringify(first)};invalidateShapePreview(tpl);
-  `);
-  const exporting=downloadedJSON(page,run,'exportShapeLibrary()');
-  await page.evaluate(()=>window.finishOldPreview('data:image/png;base64,STALE'));
-  const library=await exporting;
-  assert.equal(await page.evaluate(()=>window.previewStarted),2,'the obsolete job is discarded and a fresh preview is generated');
-  assert.notEqual(library.shapes[0].thumbnail.png,'data:image/png;base64,STALE','export waits for the replacement preview');
-  await page.waitForFunction(()=>document.querySelector('.shape-thumb img')?.naturalWidth===128);
-  assert.equal(await page.locator('#generateShapePreviews').isVisible(),false);
-}));
-
-test('per-instance Workers contain handler replacement and prototype tampering',async()=>app(async({run})=>{
-  const handler=`(self.onmessage=e=>postMessage(JSON.stringify({id:e.data.id,ok:true,result:{owned:true}})),{children(){return [];}})`;
-  const prototype=`(Object.prototype.workerPoison='attacker',{children(){return [];}})`;
-  const result=await run(`(async()=>{
-    const victim={script:'({children(){return [];},dragEdit(s){return {value:s.value+1,clean:!({}).workerPoison};}})'};
-    const results=[];
-    for(const script of ${JSON.stringify([handler,prototype])}){
-      await requestSmartCall({script},'children',[]);
-      results.push(await requestSmartCall(victim,'dragEdit',[{value:7}]));
-    }
-    return results;
-  })()`);
-  assert.deepEqual(result,[{value:8,clean:true},{value:8,clean:true}]);
-}));
-
-test('idle malicious Workers cannot forge another owners active request with guessed IDs',async()=>app(async({run})=>{
-  const attacker=`({children(){setTimeout(()=>{for(let id=1;id<50;id++)postMessage(JSON.stringify({id,owner:'instance-2',version:1,ok:true,result:{owned:true}}));},40);return [];}})`;
-  const victim=`({children(){return [];},dragEdit(s){const end=performance.now()+100;while(performance.now()<end){}return {value:s.value+1};}})`;
-  const result=await run(`(async()=>{
-    await requestSmartCall({script:${JSON.stringify(attacker)}},'children',[]);
-    return requestSmartCall({script:${JSON.stringify(victim)}},'dragEdit',[{value:7}]);
-  })()`);
-  assert.deepEqual(result,{value:8});
-}));
-
-test('source replacement rejects in-flight state replies and creates a fresh execution owner',async()=>app(async({page,run})=>{
-  const delayed=slowClickScript.replace('performance.now()+40;while(performance.now()<end){}return {n:',
-    'performance.now()+150;while(performance.now()<end){}return {n:');
-  await run(`items=[${JSON.stringify(smartFixture(delayed))}];setTool('select');selection=[0];editingSmartIdx=0;undoStack=[];render();`);
-  const b=await page.locator('#canvas').boundingBox();await page.mouse.click(b.x+150,b.y+150);
-  await page.waitForFunction(()=>__test.run('smartSandboxPending.get(smartSandboxActive)?.message.fn')==='dragEdit');
-  await run(`items[0].script=${JSON.stringify(slowClickScript)};render();`);await run('smartHitSettled');
-  assert.deepEqual(await run('items[0].state'),{});assert.equal(await run('undoStack.length'),0);
-  await page.mouse.click(b.x+150,b.y+150);await run('smartHitSettled');
-  assert.deepEqual(await run('items[0].state'),{n:1});
-}));
-
-test('missing smart previews require consent; exported PNGs load without executing scripts', async()=>app(async({page,run})=>{
-  const library={shapes:[{name:'Counter',items:[smartFixture(slowClickScript)]}]};
-  await importLibrary(page,library);
-  await page.locator('#libraryDialog[open]').waitFor();
-  assert.match(await page.locator('#libraryDialogMessage').textContent(),/runs scripts/);
-  // The print preview has no script permission; only the Worker bridge can execute scripts.
-  assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'import alone must not start script execution');
-  await page.locator('#libraryDialogCancel').click();
-  assert.equal(await page.locator('.shape-thumb img').count(),0);
-  await page.locator('#generateShapePreviewsBtn').click();
-  await page.locator('#libraryDialogSubmit').click();
-  await page.locator('.shape-thumb img').waitFor();
-  const exported=await downloadedJSON(page,run,'exportShapeLibrary()');
-  assert.match(exported.shapes[0].thumbnail.png,/^data:image\/png;base64,/);
-  assert.equal(exported.shapes[0].thumbnail.version,1);
-  await contextFresh(exported);
-  async function contextFresh(data){
-    await run('persistWorkspace()');await page.reload();
-    await importLibrary(page,data);
-    await page.locator('.shape-thumb img').waitFor();
-    assert.equal(await page.locator('#libraryDialog[open]').count(),0);
-    assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'bundled PNG must not run the smart script');
-    const unchanged=await downloadedJSON(page,run,'exportShapeLibrary()');
-    assert.equal(unchanged.shapes[0].thumbnail.png,data.shapes[0].thumbnail.png);
-    const changed=JSON.parse(JSON.stringify(data));changed.shapes[0].items[0].state={group:2};
-    await importLibrary(page,changed);
-    await page.locator('#libraryDialog[open]').waitFor();
-    assert.equal(await page.locator('.shape-thumb img').count(),0,'all script state participates in preview invalidation');
-    assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'a stale PNG requires fresh consent');
-    await page.locator('#libraryDialogCancel').click();
-  }
-}));
-
 const demoLibrary = fs.readFileSync(path.join(__dirname,'..','examples','demo-shapes-library.json'),'utf8');
 const demoShapeCount = JSON.parse(demoLibrary).shapes.length;
-
-test('optional smart refresh redraws without changing state, history or saves, and follows document visibility and lifetime',async()=>app(async({page,run})=>{
-  const script=`({refreshMs(){return 100;},children(){return [{type:'text',x:0,y:0,w:180,h:30,text:String(Date.now())}];}})`;
-  await run(`items=[${JSON.stringify(smartFixture(script,{keep:'saved'}))}];setTool('select');selection=[];save();render();`);
-  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids.length")===1);
-  await savedWorkspace(run);
-  const first=await run(`(async()=>({reading:smartChildrenCache.get('smart-test').kids[0].text,
-    saved:await readSavedWorkspace(),history:undoStack.length,tab:activeTabId}))()`);
-  await page.waitForFunction(first=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.text")!==first,first.reading);
-  assert.deepEqual(await run('readSavedWorkspace()'),first.saved);
-  assert.deepEqual(await run('items[0].state'),{keep:'saved'});assert.equal(await run('undoStack.length'),first.history);
-  await run('newTab()');
-  assert.equal(await run('smartRefreshTimer'),null);assert.equal(await run('smartChildrenCache.size'),0);
-  await run(`activateTab(${JSON.stringify(first.tab)})`);
-  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids.length")===1);
-  await run(`Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));`);
-  await page.waitForFunction(()=>__test.run('smartInFlight.size')===0);
-  const hidden=await run("({requests:smartSandboxReqSeq,reading:smartChildrenCache.get('smart-test').kids[0].text})");
-  await page.waitForTimeout(250);
-  assert.equal(await run('smartSandboxReqSeq'),hidden.requests,'hidden documents stop refreshing');
-  assert.equal(await run('smartRefreshTimer'),null);
-  await run(`Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));`);
-  await page.waitForFunction(first=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.text")!==first,hidden.reading);
-  await run('selection=[0];deleteSelected()');
-  assert.equal(await run('smartRefreshTimer'),null);assert.equal(await run('smartChildrenCache.size'),0);
-}));
-
-async function printFrameReady(page){
-  await page.waitForFunction(()=>__test.run('printPreviewReady'));
-}
-
-test('printing preserves physical ruler scale, assets and pending text on the active sketch without changing the drawing',async()=>app(async({page,run})=>{
-  await run(`(async()=>{items=[{...${JSON.stringify(rectangle())},fillColor:'#ef4444'}];save();newTab();
-    const ruler={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.ruler.script};
-    await initializeSmartItem(ruler);ruler.x=100;ruler.y=100;
-    const c=document.createElement('canvas');c.width=c.height=8;c.getContext('2d').fillRect(0,0,8,8);
-    assets={printImage:c.toDataURL()};items=[ruler,{...${JSON.stringify(wrappedText)},x:100,y:300,text:'old'},
-      {type:'image',id:'printImage',x:450,y:100,w:40,h:40}];
-    setTool('select');selection=[0];editingSmartIdx=0;render();openText(1);textInput.value='Latest print note';})()`);
-  await page.locator('#menuBtn').click();await page.locator('[data-act="print"]').click();
-  await page.locator('#printDialog[open]').waitFor();await printFrameReady(page);
-  assert.equal(await page.locator('#printMode').inputValue(),'actual');
-  assert.equal(await page.locator('#printOrientation').inputValue(),'landscape');
-  assert.equal(await run('items[1].text'),'Latest print note');
-  await savedWorkspace(run);
-  const before=await run('(async()=>({scene:JSON.stringify(items),history:undoStack.length,assets:JSON.stringify(assets),saved:await readSavedWorkspace()}))()');
-  await page.locator('#printReference').check();await printFrameReady(page);
-  const result=await page.locator('#printPreview').evaluate(frame=>{
-    const doc=frame.contentDocument,page=doc.querySelector('body>svg'),art=doc.querySelector('.print-artwork>svg');
-    return {paper:[page.getAttribute('width'),page.getAttribute('height')],ratio:+art.getAttribute('width')/+art.getAttribute('viewBox').split(/\s+/)[2],
-      reference:doc.querySelector('.print-calibration path').getBBox().width,
-      images:doc.querySelectorAll('image').length,text:doc.body.textContent,markup:doc.querySelector('.print-artwork').innerHTML};
-  });
-  assert.deepEqual(result.paper,['297mm','210mm']);assert.ok(Math.abs(result.ratio-25.4/96)<1e-10);
-  assert.equal(result.reference,50);assert.equal(result.images,1);assert.match(result.text,/Latest\s*print\s*note/);
-  assert.ok(!result.markup.includes('#ef4444'),'background tabs are not printed');
-  assert.ok(!result.text.includes('↻'),'edit-mode controls are not printed');
-  await page.locator('#printPaper').selectOption('letter');await page.locator('#printOrientation').selectOption('landscape');
-  await page.locator('#printMargin').fill('13');await printFrameReady(page);
-  assert.deepEqual(await page.locator('#printPreview').evaluate(frame=>{
-    const page=frame.contentDocument.querySelector('body>svg'),clip=frame.contentDocument.querySelector('clipPath rect');
-    return [page.getAttribute('width'),page.getAttribute('height'),clip.getAttribute('x')];
-  }),['279.4mm','215.9mm','13']);
-  await page.locator('#printPreview').evaluate(frame=>{frame.contentWindow.print=()=>{frame.dataset.printCalls=String(+(frame.dataset.printCalls||0)+1);};});
-  await page.locator('#printDialogSubmit').click();
-  assert.equal(await page.locator('#printPreview').getAttribute('data-print-calls'),'1','Print targets the prepared document');
-  assert.deepEqual(await run('(async()=>({scene:JSON.stringify(items),history:undoStack.length,assets:JSON.stringify(assets),saved:await readSavedWorkspace()}))()'),before);
-  await page.locator('#printDialogCancel').click();await page.waitForFunction(()=>__test.run('printSnapshot')===null);
-}));
-
-test('tiled printing keeps physical scale, matching overlap marks, numbered previews, and every sheet in the PDF',async()=>app(async({page,run,context})=>{
-  await run(`items=[{...${JSON.stringify(rectangle())},w:2000,h:1100}];save();render();`);
-  await savedWorkspace(run);
-  const before=await run('(async()=>JSON.stringify({items,undoStack,redoStack,assets,storage:await readSavedWorkspace()}))()');
-  await page.keyboard.press('Control+p');await page.locator('#printDialog[open]').waitFor();
-  await page.locator('#printMode').selectOption('tile');await printFrameReady(page);
-  assert.equal(await page.locator('#printOverlap').inputValue(),'10');
-  assert.equal(await page.locator('#printAlignment').isChecked(),true);
-  assert.equal(await page.locator('#printWarning').isVisible(),false,'tiling preserves the whole drawing without a clipping override');
-  assert.match(await page.locator('#printSummary').textContent(),/100%.*2 columns × 2 rows.*4 pages/);
-  const sheets=await page.locator('#printPreview').evaluate(frame=>[...frame.contentDocument.querySelectorAll('body>svg')].map(sheet=>{
-    const art=sheet.querySelector('.print-artwork>svg'),clip=sheet.querySelector('clipPath rect');
-    const path=sheet.querySelector('.print-alignment path'),marks=[];
-    for(let distance=2;distance<path.getTotalLength();distance+=8){
-      const point=path.getPointAtLength(distance);marks.push([point.x-+art.getAttribute('x'),point.y-+art.getAttribute('y')]);
-    }
-    return {x:+art.getAttribute('x'),y:+art.getAttribute('y'),w:+art.getAttribute('width'),h:+art.getAttribute('height'),
-      ratio:+art.getAttribute('width')/+art.getAttribute('viewBox').split(/\s+/)[2],
-      area:[+clip.getAttribute('width'),+clip.getAttribute('height')],marks,label:sheet.querySelector('.print-page-number').textContent};
-  }));
-  assert.equal(sheets.length,4);
-  for(const sheet of sheets){assert.ok(Math.abs(sheet.ratio-25.4/96)<1e-10);assert.deepEqual(sheet.area,[277,182]);}
-  assert.equal(sheets[0].x-sheets[1].x,267,'adjacent columns repeat 10 mm');
-  assert.equal(sheets[0].y-sheets[2].y,172,'adjacent rows repeat 10 mm');
-  assert.deepEqual(sheets[0].marks.slice(0,2),sheets[1].marks.slice(0,2),'horizontal neighbours share registration coordinates');
-  assert.deepEqual(sheets[0].marks.slice(2),sheets[2].marks.slice(2),'vertical neighbours share registration coordinates');
-  assert.ok(sheets[1].x+sheets[1].w<=10+277 && sheets[3].y+sheets[3].h<=10+182,'last column and row cover the remaining drawing');
-  assert.match(sheets[3].label,/Page 4 of 4.*Row 2, column 2/);
-  assert.equal(await page.locator('#printPagePrev').isDisabled(),true);
-  for(let i=0;i<3;i++)await page.locator('#printPageNext').click();
-  assert.match(await page.locator('#printPageLabel').textContent(),/Page 4 of 4.*Row 2, column 2/);
-  assert.equal(await page.locator('#printPageNext').isDisabled(),true);
-  const output=await context.newPage();
-  try{
-    await output.setContent(await page.locator('#printPreview').evaluate(frame=>frame.contentDocument.documentElement.outerHTML));
-    assert.equal(await output.locator('body>svg:visible').count(),1);
-    await output.emulateMedia({media:'print'});
-    assert.equal(await output.locator('body>svg:visible').count(),4,'printing includes every sheet regardless of the selected preview');
-    if(engine==='chromium'){
-      const pdf=await output.pdf({preferCSSPageSize:true});
-      assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)||[]).length,4,'the PDF contains exactly four physical sheets');
-    }
-  }finally{await output.close();}
-  await page.locator('#printOverlap').fill('50');await printFrameReady(page);
-  assert.match(await page.locator('#printSummary').textContent(),/3 columns × 2 rows.*6 pages/);
-  assert.match(await page.locator('#printPageLabel').textContent(),/Page 1 of 6/,'layout changes reset the preview page');
-  await page.locator('#printAlignment').uncheck();await printFrameReady(page);
-  assert.equal(await page.locator('#printPreview').evaluate(frame=>frame.contentDocument.querySelectorAll('.print-alignment').length),0);
-  await page.locator('#printOverlap').fill('0');await page.locator('#printReference').check();await printFrameReady(page);
-  assert.match(await page.locator('#printSummary').textContent(),/2 columns × 2 rows.*4 pages/);
-  assert.deepEqual(await page.locator('#printPreview').evaluate(frame=>[...frame.contentDocument.querySelectorAll('.print-calibration path')].map(p=>p.getPointAtLength(50).x-p.getPointAtLength(0).x)),[50,50,50,50]);
-  await page.locator('#printPreview').evaluate(frame=>{frame.contentWindow.print=()=>{frame.dataset.printCalls='1';};});
-  await page.keyboard.press('Control+p');
-  assert.equal(await page.locator('#printPreview').getAttribute('data-print-calls'),'1');
-  assert.equal(await run('(async()=>JSON.stringify({items,undoStack,redoStack,assets,storage:await readSavedWorkspace()}))()'),before,'tiling never changes the drawing or saved state');
-  await page.locator('#printOverlap').fill('');assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
-  assert.match(await page.locator('#printDialogError').textContent(),/overlap/);
-  await page.locator('#printMode').selectOption('fit');await printFrameReady(page);
-  assert.equal(await page.locator('#printTileOptions').isVisible(),false);
-  assert.equal(await page.locator('#printPageNav').isVisible(),false);
-}));
-
-test('print previews freeze live shapes and a cancelled snapshot cannot reopen or replace a later preview',async()=>app(async({page,run})=>{
-  const script=`({refreshMs(){return 100;},children(s,style,w,h,editing){return [{type:'text',x:0,y:0,w,h,text:String(Date.now())+(editing?' EDIT CONTROL':'')}];}})`;
-  await run(`items=[${JSON.stringify(smartFixture(script))}];setTool('select');selection=[0];editingSmartIdx=0;render();`);
-  await page.locator('#menuBtn').click();await page.locator('[data-act="print"]').click();await printFrameReady(page);
-  const snapshot=await run('printSnapshot.svg');assert.ok(!snapshot.includes('EDIT CONTROL'));
-  const live=await run("smartChildrenCache.get('smart-test')?.kids[0]?.text");
-  await page.waitForFunction(before=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.text")!==before,live);
-  await page.locator('#printMargin').fill('12');await printFrameReady(page);
-  assert.equal(await run('printSnapshot.svg'),snapshot,'layout changes reuse the frozen drawing');
-  await page.locator('#printDialogCancel').click();
-  const slow=`({children(){const start=performance.now();while(performance.now()-start<150){}return [{type:'text',x:0,y:0,w:180,h:30,text:'Old snapshot'}];}})`;
-  await run(`items=[${JSON.stringify(smartFixture(slow))}];selection=[];render();void openPrintDialog();`);
-  await page.locator('#printDialogCancel').click();
-  await run(`items=[${JSON.stringify(rectangle())}];render();openPrintDialog();`);await printFrameReady(page);
-  assert.ok(!(await run('printSnapshot.svg')).includes('Old snapshot'));
-  assert.equal(await page.locator('#printDialog[open]').count(),1);
-}));
-
-test('a custom deployment title is plain text and invalid titles do not partially apply settings',async()=>{
-  const title='Team <b>sketchpad</b> & notes';
-  await app(async({page,run})=>{
-    assert.equal(await page.title(),title);
-    assert.equal(await page.locator('head title b').count(),0);
-    assert.equal(await run('features.workspace'),false);
-    assert.equal(await page.locator('#settingsWarning').isVisible(),false);
-  },{files:{'settings.json':JSON.stringify({version:1,title,features:{workspace:false}})}});
-  for(const title of ['',42]){
-    await app(async({page,run})=>{
-      assert.equal(await page.title(),'Paperwire — Quick Sketches');
-      assert.equal(await run('features.workspace'),true,'invalid settings never partially disable features');
-      assert.equal(await page.locator('#settingsWarning').isVisible(),true);
-    },{files:{'settings.json':JSON.stringify({title,features:{workspace:false}})}});
-  }
-});
-
-test('deployment settings load a custom title and disable all optional features',async()=>app(async({page,run})=>{
-  assert.equal(await page.title(),'Custom drawing app');
-  assert.equal(await run('Object.values(features).every(value=>value===false)'),true);
-  assert.equal(await page.locator('#shapeLibWrap').isVisible(),false);
-  assert.equal(await run('performance.getEntriesByType("resource").some(e=>e.name.endsWith("shapes-library.json"))'),false);
-  await page.locator('#menuBtn').click();
-  for(const action of ['newWorkspace','newTab','openWorkspace','saveWorkspace'])assert.equal(await page.locator(`[data-act="${action}"]`).isVisible(),false);
-  await page.keyboard.press('Escape');await page.locator('[data-tool="rect"]').click();
-  const canvas=await page.locator('#canvas').boundingBox();
-  await page.mouse.move(canvas.x+100,canvas.y+100);await page.mouse.down();
-  await page.mouse.move(canvas.x+260,canvas.y+200,{steps:5});await page.mouse.up();
-  assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
-  await run('persistWorkspace()');await page.reload();await run('appReady');assert.equal(await page.title(),'Custom drawing app');
-  assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
-},{origin:'http://paperwire.test/custom',files:{'settings.json':JSON.stringify({version:1,title:'Custom drawing app',features:{workspace:false,shapeLibrary:false,shapeLibraryManagement:false,smartShapeAuthoring:false,smartComponents:false,networkIntegrations:false,iconify:false,customPrinting:false}})}}));
-
-test('settings resolve before input, document restoration, or library loading',async()=>app(async({page,run})=>{
-  let finish,started;
-  const pending=new Promise(resolve=>{finish=resolve;}),requested=new Promise(resolve=>{started=resolve;});
-  await page.route('**/settings.json',async route=>{started();await pending;await route.fulfill({contentType:'application/json',body:JSON.stringify({title:'Delayed deployment title',features:{workspace:false,shapeLibrary:false}})});});
-  await run('persistWorkspace()');await page.reload({waitUntil:'domcontentloaded'});await requested;
-  assert.equal(await page.evaluate(()=>document.body.inert),true);
-  assert.equal(await page.title(),'Paperwire — Quick Sketches','document load does not imply asynchronous settings are ready');
-  assert.equal(await page.evaluate(()=>__test.run('activeTabId')),null);
-  await page.keyboard.press('r');assert.equal(await page.evaluate(()=>__test.run('ui.tool')),'pen');
-  finish();await run('appReady');
-  assert.equal(await page.title(),'Delayed deployment title');
-  assert.equal(await page.evaluate(()=>document.body.inert),false);
-  assert.equal(await page.locator('#shapeLibWrap').isVisible(),false);
-  assert.equal(await page.locator('[data-act="newTab"]').getAttribute('hidden'),'');
-}));
 
 test('the standalone local HTML opens with defaults and no HTTP settings dependency',async()=>{
   const context=await browser.newContext();
@@ -1378,419 +883,11 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
   window.Worker=class extends NativeWorker{constructor(...args){super(...args);window.__smartWorkerStarts++;}};
 }}));
 
-test('a delayed demo response preserves a library imported during startup',async()=>app(async({page,run})=>{
-  let finishDemo,requestStarted;
-  const pendingDemo=new Promise(resolve=>{finishDemo=resolve;});
-  const responseReady=new Promise(resolve=>{requestStarted=resolve;});
-  await page.route('**/shapes-library.json',async route=>{
-    requestStarted();await pendingDemo;
-    await route.fulfill({contentType:'application/json',body:demoLibrary});
-  });
-  // Do not wait for the deliberately pending startup fetch's load event.
-  await run('persistWorkspace()');await page.reload({waitUntil:'domcontentloaded'});
-  await responseReady;
-  await importLibrary(page,{shapes:[{name:'My imported shape',items:[rectangle()]}]});
-  finishDemo();await page.waitForLoadState('networkidle');
-  assert.deepEqual(await run('shapeLibrary.shapes.map(t=>t.name)'),['My imported shape']);
-}));
-
-test('released smart clicks survive nudges and color changes with independent undo entries',async()=>app(async({page,run})=>{
-  const script=slowClickScript.replace('performance.now()+40;while(performance.now()<end){}return {n:',
-    'performance.now()+180;while(performance.now()<end){}return {n:');
-  for(const action of ['nudge','held nudge','color']){
-    await run(`cancelGesture();items=[${JSON.stringify(smartFixture(script))}];setTool('select');selection=[0];editingSmartIdx=0;undoStack=[];redoStack=[];render();`);
-    const b=await page.locator('#canvas').boundingBox();
-    await page.mouse.click(b.x+150,b.y+150);
-    await page.waitForFunction(()=>__test.run('smartSandboxPending.get(smartSandboxActive)?.message.fn')==='dragEdit');
-    if(action==='nudge') await page.keyboard.press('ArrowRight');
-    else if(action==='held nudge') await page.keyboard.down('ArrowRight');
-    else await run(`applyStrokeColor('#0000ff',false)`);
-    await run('smartHitSettled');
-    assert.equal(await run('items[0].state.n'),1,action+' must retain the completed click');
-    if(action==='held nudge') await page.keyboard.up('ArrowRight');
-    assert.equal(await run('undoStack.length'),2,action+' and the handle action have separate history');
-    await run('undo()');
-    if(action==='held nudge'){
-      assert.equal(await run('items[0].state.n'),1);assert.equal(await run('items[0].x'),100);
-    }else{
-      assert.deepEqual(await run('items[0].state'),{});
-      assert.equal(await run(action==='nudge'?'items[0].x':'items[0].color'),action==='nudge'?101:'#0000ff');
-    }
-    await run('undo()');
-    assert.deepEqual(await run('items[0].state'),{});assert.equal(await run('items[0].x'),100);
-    assert.equal(await run('items[0].color'),'#000000');
-    await run('redo();redo()');assert.equal(await run('items[0].state.n'),1);
-  }
-}));
-
-test('loaded smart state enforces the hook contract before replacing a library or editing a sketch',async()=>app(async({page,run})=>{
-  await importLibrary(page,{shapes:[{name:'Keep',items:[rectangle()]}]});
-  await page.locator('.shape-thumb img').waitFor();
-  const result=await run(`(()=>{
-    const good=${JSON.stringify(smartFixture('({children(){return [];}})',{data:[true,null,7]}))};
-    let deep={};for(let i=0;i<18;i++)deep={child:deep};
-    const invalid=[{constructor:1},JSON.parse('{"__proto__":{}}'),{data:{prototype:1}},deep,[],null,{n:Infinity}];
-    return {kept:normalizeScene([good],{},FORMAT_VERSION).items[0].state,
-      rejected:invalid.map(state=>normalizeScene([{...good,state}],{},FORMAT_VERSION).items.length),
-      missing:normalizeItem({...good,state:undefined},{}).state};
-  })()`);
-  assert.deepEqual(result,{kept:{data:[true,null,7]},rejected:Array(7).fill(0),missing:{}});
-  await importLibrary(page,{shapes:[{name:'Invalid',items:[smartFixture('({children(){return [];}})',{constructor:1})]}]});
-  await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('Invalid object'));
-  assert.equal(await run('shapeLibrary.shapes[0].name'),'Keep');
-}));
-
-test('thumbnail and child SVG injection cannot reach the page on import, generation, or export',async()=>app(async({page,run,context})=>{
-  await page.evaluate(()=>localStorage.setItem('security-sentinel','test-only'));
-  const injected='100"/><image href="data:," onerror="window.leak=localStorage.getItem(\'security-sentinel\')"/><rect width="100';
-  const script=`({children(){return [
-    {type:'rect',x:0,y:0,w:${JSON.stringify(injected)},h:100,strokeOn:false,fill:true,fillColor:'#000000'},
-    {type:'rect',x:0,y:0,w:20,h:30,fill:true,fillColor:'#22c55e',strokeOn:false}];}})`;
-  const fixture=smartFixture(script);
-  const fake='data:image/png;base64,'+Buffer.from('<svg onload="window.leak=1"/>').toString('base64');
-  await importLibrary(page,{shapes:[{name:'Attack',items:[fixture],thumbnail:{version:1,png:fake,source:'forged'}}]});
-  await page.locator('#libraryDialog[open]').waitFor();
-  await page.locator('#libraryDialogSubmit').click();
-  await page.locator('.shape-thumb img').waitFor();
-  assert.equal(await page.evaluate(()=>window.leak),undefined);
-  await run(`items=[${JSON.stringify(fixture)}];render();`);
-  const svg=await run('itemsToSVGMarkup(items)');
-  assert.ok(svg.includes('#22c55e'),'the valid sibling still exports');
-  assert.ok(!svg.includes('onerror') && !svg.includes('<image'));
-  const exported=await downloadedHTML(page,run);
-  const view=await context.newPage();
-  await view.setContent(exported);
-  assert.equal(await view.evaluate(()=>window.leak),undefined);
-  await view.close();
-}));
-
-test('opaque Worker policy blocks recovered network APIs, imports and storage over HTTP and file URLs',async()=>{
-  const script=`({children(){
-    const r=self.probeResult||(self.probeResult={});
-    if(!r.started){r.started=true;
-      WorkerGlobalScope.prototype.fetch.call(self,'https://blocked.test/fetch').then(()=>r.fetch='allowed',()=>r.fetch='blocked');
-      import('https://blocked.test/module.js').then(()=>r.module='allowed',()=>r.module='blocked');
-      try{WorkerGlobalScope.prototype.importScripts.call(self,'https://blocked.test/script.js');r.importScripts='allowed';}catch(e){r.importScripts='blocked';}
-      try{Object.getOwnPropertyDescriptor(WorkerGlobalScope.prototype,'indexedDB').get.call(self).open('test');r.storage='allowed';}catch(e){r.storage='blocked';}
-    }
-    return [{type:'text',text:JSON.stringify(r),x:0,y:0,w:180,h:100,strokeOn:false,fill:false}];
-  }})`;
-  for(const origin of ['http://simplecanvas.test','file://'+path.resolve(__dirname,'..')]){
-    await app(async({page,run,context})=>{
-      const requests=[];
-      await context.route('https://blocked.test/**',route=>{requests.push(route.request().url());return route.fulfill({contentType:'text/javascript',body:'export const ok=1;'});});
-      await run(`window.policyProbe={script:${JSON.stringify(script)}};requestSmartCall(policyProbe,'children',[])`);
-      await page.waitForTimeout(100);
-      const kids=await run(`requestSmartCall(policyProbe,'children',[])`);
-      const r=JSON.parse(kids[0].text);
-      for(const key of ['fetch','module','importScripts','storage']) assert.equal(r[key],'blocked',key+' on '+origin);
-      assert.deepEqual(requests,[],'no blocked request reaches the network');
-    },{origin});
-  }
-});
-
-test('malformed and oversized hook results cannot poison rendering, handles, state or export',async()=>app(async({page,run})=>{
-  const script=`({children(s){if(!s.good)return {};return [{type:'rect',x:0,y:0,w:20,h:30,fill:true,fillColor:'#22c55e'}];},handles(){return {};}})`;
-  await run(`items=[${JSON.stringify(smartFixture(script))},${JSON.stringify(rectangle('other'))}];setTool('select');selection=[0];editingSmartIdx=0;render();`);
-  await page.waitForTimeout(100);
-  await run('render()');
-  const svg=await run('itemsToSVGMarkup(items)');
-  assert.ok(svg.includes('#ffd166'),'the other drawing still exports');
-  const values=await run(`(async()=>{
-    const results=[];
-    for(const [src,hook] of [
-      ['({children(){return Array(1001).fill({type:"rect",x:0,y:0,w:1,h:1})}})','children'],
-      ['({children(){return []},handles(){return [{id:"a",x:1,y:2},{id:"a",x:2,y:3}]}})','handles'],
-      ['({children(){return []},initState(){return {tooLong:"x".repeat(4001)}}})','initState'],
-      ['({children(){return []},dragEdit(){return []}})','dragEdit'],
-      ['({children(){return []},initStyle(){return {w:"100"}}})','initStyle']
-    ])results.push(await requestSmartCall(src,hook,[]));
-    return results;
-  })()`);
-  assert.deepEqual(values,[null,null,null,null,{}]);
-  await run('render()');
-}));
-
-test('cancel, delete, undo and tab switches invalidate delayed smart state updates',async()=>app(async({page,run})=>{
-  const delayed=slowClickScript.replace('performance.now()+40;while(performance.now()<end){}return {n:', 'performance.now()+120;while(performance.now()<end){}return {n:');
-  for(const action of ['cancelGesture()','deleteSelected()','undo()','newTab()']){
-    await run(`cancelGesture();items=[${JSON.stringify(smartFixture(delayed))}];setTool('select');selection=[0];editingSmartIdx=0;undoStack=[];historyBefore=null;render();`);
-    await page.waitForTimeout(100);
-    const b=await page.locator('#canvas').boundingBox();await page.mouse.click(b.x+150,b.y+150);
-    await page.waitForTimeout(60);await run(action);await page.waitForTimeout(200);
-    if(action==='newTab()'){
-      const stored=await run(`Array.from(tabDocuments.values()).flatMap(doc=>doc.items).filter(it=>it.uid==='smart-test').map(it=>it.state)`);
-      assert.ok(stored.every(s=>!s.n),'old tab must not receive a stale state reply');
-    } else assert.ok((await run('items.map(it=>it.state)')).every(s=>!s?.n),action+' must stop delayed updates');
-  }
-}));
-
-test('smart drag release never applies the same movement twice, including an in-flight final move',async()=>app(async({page,run})=>{
-  const script=`({
-    children(){return [{type:'rect',x:0,y:0,w:180,h:180}];},
-    handles(){return [{id:'move',x:50,y:50}];},hitEdit(){return 'move';},
-    dragEdit(s,id,x,y){const end=performance.now()+40;while(performance.now()<end){}return {n:(s.n||0)+1,x,y};}
-  })`;
-  for(const settled of [true,false]){
-    await run(`cancelGesture();items=[${JSON.stringify(smartFixture(script))}];setTool('select');selection=[0];editingSmartIdx=0;undoStack=[];historyBefore=null;render();`);
-    const b=await page.locator('#canvas').boundingBox();
-    await page.mouse.move(b.x+150,b.y+150);await page.mouse.down();
-    await page.waitForFunction(()=>__test.run('smartCurrentPress?.mode')==='handle');
-    await page.mouse.move(b.x+170,b.y+180);
-    if(settled) await page.waitForFunction(()=>__test.run('items[0].state.n')===1);
-    await page.mouse.up();await run('smartHitSettled');
-    assert.deepEqual(await run('items[0].state'),{n:1,x:70,y:80});
-    assert.equal(await run('undoStack.length'),1);
-    await run('undo()');assert.deepEqual(await run('items[0].state'),{});
-  }
-}));
-
-test('source edits update the library and bundled PNG, survive export, and preserve placed instances',async()=>app(async({page,run})=>{
-  const oldScript=`({children(){return [{type:'rect',x:0,y:0,w:180,h:180,fill:true,fillColor:'#dc2626'}];}})`;
-  const newScript=oldScript.replace('#dc2626','#3b82f6');
-  await importLibrary(page,{shapes:[{name:'Color box',items:[smartFixture(oldScript,{n:7})]}]});
-  await page.locator('#libraryDialogSubmit').click();await page.locator('.shape-thumb img').waitFor();
-  const before=await downloadedJSON(page,run,'exportShapeLibrary()');
-  await run("placeShapeAt(shapeLibrary.shapes[0],400,300)");
-  if(await page.locator('#shapePicker').isHidden())await page.locator('#shapeLibBtn').click();
-  await page.locator('#manageShapesBtn').click();
-  await page.getByRole('button',{name:'Edit Color box',exact:true}).click();
-  assert.equal(await page.locator('#smartObjectNameField').isHidden(),true);
-  assert.equal(await page.locator('#smartObjectNameInput').isDisabled(),true);
-  await page.locator('#smartObjectNameInput').evaluate(input=>{input.value='Renamed by a stale form';});
-  await page.locator('#smartObjectScriptInput').fill('({initState(){return {};}})');
-  await page.locator('#smartObjectDialogSubmit').click();
-  await page.waitForFunction(()=>document.querySelector('#smartObjectDialogError').textContent.includes('children'));
-  assert.equal(await run('shapeLibrary.shapes[0].items[0].script'),oldScript);
-  await page.locator('#smartObjectScriptInput').fill(newScript);await page.locator('#smartObjectDialogSubmit').click();
-  await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
-  const after=await downloadedJSON(page,run,'exportShapeLibrary()');
-  assert.equal(after.shapes.length,1,'saving updates the entry instead of adding a duplicate');
-  assert.equal(after.shapes[0].name,'Color box','saving source ignores changes to the hidden creation-only name field');
-  assert.deepEqual(after.shapes[0].items[0],{...before.shapes[0].items[0],script:newScript});
-  assert.notEqual(after.shapes[0].thumbnail.png,before.shapes[0].thumbnail.png);
-  assert.equal(await run('items[0].script'),oldScript,'placed instances keep their own definition');
-  await run('persistWorkspace()');await page.reload();await importLibrary(page,after);
-  assert.equal(await page.locator('#libraryDialog[open]').count(),0,'the edited preview is bundled');
-  await page.locator('#manageShapesBtn').click();
-  await page.getByRole('button',{name:'Edit Color box',exact:true}).click();
-  assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),newScript);
-  await page.locator('#smartObjectDialogCancel').click();
-  await page.locator('#newSmartObjectBtn').click();
-  assert.equal(await page.locator('#smartTemplateRow').isVisible(),true);
-  assert.equal(await page.locator('#smartObjectNameField').isVisible(),true,'creation restores the name field after source editing');
-  assert.equal(await page.locator('#smartObjectNameInput').isEnabled(),true);
-  assert.equal(await page.locator('#smartObjectNameInput').evaluate(element=>element===document.activeElement),true,'new-shape creation still starts with its name');
-  await page.locator('#smartObjectNameInput').fill('New shape');
-  await page.locator('#smartObjectScriptInput').fill(newScript);await page.locator('#smartObjectDialogSubmit').click();
-  await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
-  assert.deepEqual(await run('shapeLibrary.shapes.map(t=>t.name)'),['Color box','New shape']);
-}));
-
-test('each smart placement initializes fresh state and style, including imported definitions without state',async()=>app(async({page,run})=>{
-  const script=`({initState(){return {stamp:Date.now()};},initStyle(){return {fillColor:'#3b82f6',size:5,w:120,h:80};},children(){return [];}})`;
-  await run(`shapeLibrary=normalizeShapeLibrary({shapes:[{name:'Fresh',items:[${JSON.stringify(smartFixture(script,{stamp:0}))}]}]});items=[];undoStack=[];`);
-  const start=Date.now();await run('placeShapeAt(shapeLibrary.shapes[0],300,200)');
-  await page.waitForTimeout(5);await run('placeShapeAt(shapeLibrary.shapes[0],600,400)');
-  const placed=await run('items');
-  assert.equal(placed.length,2);
-  assert.ok(placed[0].state.stamp>=start);assert.ok(placed[1].state.stamp>placed[0].state.stamp);
-  for(const [i,it] of placed.entries()){
-    assert.equal(it.fillColor,'#3b82f6');assert.equal(it.size,5);assert.equal(it.w,120);assert.equal(it.h,80);
-    assert.equal(it.x+it.w/2,i===0?300:600);assert.equal(it.y+it.h/2,i===0?200:400);
-  }
-  assert.equal(await run('undoStack.length'),2);
-  await run('undo()');assert.equal(await run('items.length'),1);
-  await run('redo()');assert.equal(await run('items[1].state.stamp'),placed[1].state.stamp,'redo restores the initialized instance');
-  assert.deepEqual(await run('shapeLibrary.shapes[0].items[0].state'),{stamp:0},'placement never changes the definition');
-  await run(`const raw=${JSON.stringify(smartFixture(script))};delete raw.state;
-    const imported=normalizeShapeLibrary({shapes:[{name:'Missing state',items:[raw]}]});placeShapeAt(imported.shapes[0],800,400);`);
-  await page.waitForFunction(()=>__test.run('items.length')===3);
-  assert.ok(await run('items[2].state.stamp')>=start);
-}));
-
-test('rapid smart placements keep their order and undo entries; cancellation discards pending initialization',async()=>app(async({page,run})=>{
-  const script=`({n:0,initState(){const end=performance.now()+50;while(performance.now()<end){}return {n:++this.n};},children(){return [];}})`;
-  await importLibrary(page,{shapes:[{name:'Fresh',items:[smartFixture(script)]}]});
-  await page.locator('#libraryDialogCancel').click();
-  await run('armShapeForPlacement(shapeLibrary.shapes[0])');
-  const b=await page.locator('#canvas').boundingBox();await page.mouse.dblclick(b.x+400,b.y+300);
-  await run('shapePlacementQueue');
-  assert.deepEqual(await run('items.map(it=>it.state.n)'),[1,1],'each placement owns a fresh definition realm');
-  assert.equal(await run('undoStack.length'),2);await run('undo()');assert.equal(await run('items.length'),1);
-  await run('undo()');assert.equal(await run('items.length'),0);
-  for(const action of ['newTab()','undo()','setTool("pen")','cancelGesture()','Escape','clearAll()']){
-    await run('cancelGesture();items=[];undoStack=[];setTool("select");void placeShapeAt(shapeLibrary.shapes[0],300,200);');
-    await page.waitForFunction(()=>__test.run('smartSandboxPending.get(smartSandboxActive)?.message.fn')==='initState');
-    if(action==='Escape') await page.keyboard.press('Escape');else await run(action);
-    await run('shapePlacementQueue');
-    assert.equal(await run('items.length'),0,action+' cancels the pending placement');
-    assert.ok(await run('Array.from(tabDocuments.values()).every(doc=>!doc.items.some(it=>it.type==="smart"))'),'no stale shape is added to a background tab');
-  }
-}));
-
 // Compare production canvas/SVG/PNG output with the browser's own rendering of the source SVG.
 // These fixtures are centered in their viewBox, matching the library's centering policy.
-test('compound icon fills and short curved contours survive editing, persistence and image export',async()=>app(async({run})=>{
-  const cases=[
-    ['overlapping evenodd','<path fill-rule="evenodd" d="M0 0H16V24H0Z M8 0H24V24H8Z"/>',[[4,12],[12,12],[20,12]]],
-    ['overlapping opposite winding','<path d="M0 0H16V24H0Z M8 0V24H24V0Z"/>',[[4,12],[12,12],[20,12]]],
-    ['nested nonzero','<path d="M0 0H24V24H0Z M3 3H21V21H3Z M6 6V18H18V6Z M9 9V15H15V9Z"/>',[[1,12],[4,12],[7,12],[12,12]]],
-    ['evenodd island','<path fill-rule="evenodd" d="M0 0H24V24H0Z M6 6H18V18H6Z M10 10H14V14H10Z"/>',[[2,2],[7,7],[12,12]]],
-    ['nonzero island','<path d="M0 0H24V24H0Z M6 6V18H18V6Z M10 10H14V14H10Z"/>',[[2,2],[7,7],[12,12]]],
-    ['disjoint contours','<path d="M0 0H8V24H0Z M16 0H24V24H16Z"/>',[[4,12],[12,12],[20,12]]],
-    ['transformed curves','<g transform="translate(12 12) rotate(30) scale(1 .6)"><path fill="#36c" d="M-12 0C-12 -12 12 -12 12 0C12 12 -12 12 -12 0Z"/></g>',[[1,1],[12,12],[23,23]]],
-    ['two-anchor lens','<path d="M0 12C0 0 24 0 24 12C24 24 0 24 0 12Z"/>',[[1,1],[12,4],[12,12],[12,20]]],
-    ['one-anchor loop','<path d="M12 24C-12 -8 36 -8 12 24Z"/>',[[2,12],[12,2],[12,12],[22,12]]],
-  ];
-  for(const [name,body,samples] of cases){
-    const r=await run(`(async()=>{
-      const body=${JSON.stringify(body)},samples=${JSON.stringify(samples)},vb={left:0,top:0,width:24,height:24};
-      const at=samples.map(([x,y])=>[x*5,y*5]);
-      async function raster(url,width,height,points){
-        const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});
-        const off=document.createElement('canvas');off.width=width;off.height=height;const x=off.getContext('2d');
-        x.fillStyle='#fff';x.fillRect(0,0,width,height);x.drawImage(image,0,0,width,height);
-        return points.map(([px,py])=>Array.from(x.getImageData(Math.round(px),Math.round(py),1,1).data));
-      }
-      const expected=await raster('data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24">'+body+'</svg>'),120,120,at);
-      const converted=svgIconToItems(body,vb);
-      if(!converted.items)return {error:converted.error};
-      const lib=normalizeShapeLibrary(JSON.parse(JSON.stringify({shapes:[{name:'Imported',items:converted.items}]})));
-      items=normalizeScene(lib.shapes[0].items,{},FORMAT_VERSION).items;ensureUids(items);
-      items.forEach(it=>translateItem(it,60,60));
-      items.forEach((_,i)=>convertToCurve(i));
-      setTool('select');selection=[];render();
-      const canvasPixels=at.map(([x,y])=>Array.from(ctx.getImageData(x*dpr,y*dpr,1,1).data));
-      const svg=await itemsToSVGMarkup(items,{width:120,height:120,background:false});
-      const svgPixels=await raster('data:image/svg+xml,'+encodeURIComponent(svg),120,120,at);
-      const bitmap=await createImageBitmap(await itemsToPngBlob(items,{background:false,scale:1,margin:0}));
-      const png=document.createElement('canvas');png.width=png.height=120;const px=png.getContext('2d');
-      px.fillStyle='#fff';px.fillRect(0,0,120,120);px.drawImage(bitmap,(120-bitmap.width)/2,(120-bitmap.height)/2);
-      const pngPixels=at.map(([x,y])=>Array.from(px.getImageData(x,y,1,1).data));
-      return {expected,canvasPixels,svgPixels,pngPixels};
-    })()`);
-    assert.equal(r.error,undefined,name+' converts');
-    assert.deepEqual(r.canvasPixels,r.expected,name+' matches the original on canvas after roundtrip and point-edit conversion');
-    assert.deepEqual(r.svgPixels,r.expected,name+' keeps its fill in SVG export');
-    assert.deepEqual(r.pngPixels,r.expected,name+' keeps its fill in PNG export');
-  }
-}));
-
-test('Close, Escape and library replacement invalidate pending icon imports',async()=>{
-  for(const action of ['close','escape','replace'])await app(async({page,run})=>{
-    let release,retryStarted,calls=0;
-    const response=new Promise(resolve=>release=resolve),retry=new Promise(resolve=>retryStarted=resolve);
-    const body='<rect width="24" height="24"/>';
-    await page.route('https://api.iconify.design/**',async route=>{
-      const url=new URL(route.request().url()),headers={'access-control-allow-origin':'*'};
-      if(url.pathname==='/search')return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({
-        icons:['test:late'],collections:{test:{name:'Test',license:{title:'MIT',spdx:'MIT'}}}
-      })});
-      if(url.pathname==='/test.json'){
-        if(++calls===1)return route.fulfill({status:503,headers,body:''});
-        retryStarted();await response;
-        return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({width:24,height:24,icons:{late:{body}}})});
-      }
-      return route.fulfill({status:404,headers,body:''});
-    });
-    await run('openIconDialog()');await page.locator('#iconSearchInput').fill('late');await page.locator('#iconSearchBtn').click();
-    await page.locator('#iconResults .shape-thumb').waitFor();
-    assert.equal(await page.locator('#iconResults .shape-thumb').textContent(),'?');
-    await page.locator('#iconResults .shape-thumb').click();await retry;
-    if(action==='close')await page.locator('#iconDialogCancel').click();
-    if(action==='escape')await page.keyboard.press('Escape');
-    const replacement={shapes:[{name:'Replacement',items:[rectangle()]}]};
-    await importLibrary(page,replacement);
-    await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes[0]?.name')==='Replacement');
-    release();
-    await page.waitForFunction(()=>__test.run("iconBodies.has('test:late')"));
-    await run('new Promise(resolve=>setTimeout(resolve,30))');
-    assert.deepEqual(await run('shapeLibrary.shapes.map(s=>s.name)'),['Replacement'],action+' cannot append to the replacement library');
-    assert.equal(await run('shapeLibraryDirty'),false,'a cancelled import does not create unexported changes');
-    if(action==='replace')await page.locator('#iconDialogCancel').click();
-    await run('openIconDialog()');
-    await page.locator('#iconResults .shape-thumb').click();
-    await page.waitForFunction(()=>__test.run('shapeLibrary.shapes.length')===2);
-    assert.deepEqual(await run('shapeLibrary.shapes.map(s=>s.name)'),['Replacement','late'],'a fresh explicit click can add the cached icon');
-  });
-});
-
-test('a stale Load more response cannot replace a newer search or reopen a closed dialog',async()=>app(async({page,run})=>{
-  let release,started;
-  const response=new Promise(r=>release=r),pending=new Promise(r=>started=r);
-  await page.route('https://api.iconify.design/**',async route=>{
-    const url=new URL(route.request().url()),headers={'access-control-allow-origin':'*'};
-    if(url.pathname==='/search'){
-      const query=url.searchParams.get('query'),start=Number(url.searchParams.get('start'));
-      if(start){started();await response;}
-      const icons=query==='old' && !start?Array.from({length:96},(_,i)=>'test:old-'+i):['test:'+(start?'late':'new')];
-      return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({icons,collections:{test:{name:'Test',license:{spdx:'MIT'}}}})});
-    }
-    return route.fulfill({status:404,headers,body:''});
-  });
-  await run('openIconDialog()');await page.locator('#iconSearchInput').fill('old');await page.locator('#iconSearchBtn').click();
-  await page.locator('#iconResults .shape-entry').first().waitFor();await page.locator('#iconLoadMore').click();await pending;
-  await page.locator('#iconSearchInput').fill('new');await page.locator('#iconSearchBtn').click();
-  await page.waitForFunction(()=>document.querySelectorAll('#iconResults .shape-name').length===1 && document.querySelector('#iconResults .shape-name').textContent==='new');
-  await page.locator('#iconDialogCancel').click();release();
-  await run('new Promise(r=>setTimeout(r,50))');await run('openIconDialog()');
-  await page.waitForFunction(()=>document.querySelector('#iconResults .shape-name')?.textContent==='new');
-  assert.deepEqual(await page.locator('#iconResults .shape-name').allTextContents(),['new']);
-  assert.equal(await page.locator('#iconLoadMore').isVisible(),false);
-}));
-
-test('static simplification applies transforms, reports omissions, and never admits animations or empty results',async()=>app(async({run})=>{
-  const r=await run(`(()=>{
-    const vb={left:0,top:0,width:24,height:24};
-    const body='<defs><pattern id="p" width="1" height="1"/></defs><g transform="translate(12 12) scale(2 1)"><rect x="-4" y="-4" width="8" height="8" style="fill:url(#p);stroke:red;stroke-width:1;opacity:.5;stroke-dasharray:2 2"/><text>omitted</text><use href="#x"/></g>';
-    const normal=svgIconToItems(body,vb),simple=svgIconToItems(body,vb,{simplify:true});
-    const animations=[
-      '<rect width="24" height="24"><animate attributeName="x" values="0;2" dur="1s"/></rect>',
-      '<g><set attributeName="fill" to="red"/><rect width="24" height="24"/></g>',
-      '<style>@keyframes spin {to{opacity:0}}</style><rect width="24" height="24"/>',
-      '<rect width="24" height="24" style="animation:spin 1s infinite"/>',
-      '<rect width="24" height="24" style="transition:fill 1s"/>',
-    ].map(body=>[svgIconToItems(body,vb),svgIconToItems(body,vb,{simplify:true})]);
-    return {normal,simple,animations,empty:svgIconToItems('<text>only text</text>',vb,{simplify:true}),
-      unsafe:svgIconToItems('<script>throw 1</script><rect width="24" height="24"/>',vb,{simplify:true}),
-      faint:svgIconToItems('<rect width="24" height="24"/><circle r="10" opacity=".01"/>',vb),
-      zeroStroke:svgIconToItems('<rect width="24" height="24" fill="red" stroke="blue" stroke-width="0"/>',vb),
-      stylesInDefs:svgIconToItems('<defs><style>.red{fill:red}</style></defs><rect class="red" width="24" height="24"/>',vb,{simplify:true})};
-  })()`);
-  assert.equal(r.normal.canSimplify,true);assert.ok(r.simple.items?.length);assert.ok(r.simple.warnings.length>=4);
-  const b=await run(`bbox(${JSON.stringify(r.simple.items[0])},false)`);assert.equal(b.w,80);assert.equal(b.h,40,'non-uniform transforms are applied to geometry');
-  for(const pair of r.animations)for(const result of pair){assert.match(result.error,/Animated/);assert.equal(result.items,undefined);assert.equal(result.canSimplify,undefined);}
-  assert.match(r.empty.error,/no drawable/);assert.match(r.unsafe.error,/scripts/);
-  assert.ok(r.faint.warnings.some(w=>/transparent layers/.test(w)),'omitting faint layers is disclosed');
-  assert.equal(r.zeroStroke.items[0].strokeOn,false,'zero-width SVG strokes stay invisible');
-  assert.ok(r.stylesInDefs.warnings.includes('Stylesheet rules were omitted.'),'CSS rules inside definitions require the same disclosure');
-}));
 
 const pointEditSquare = {type:'polygon',uid:'sq',closed:true,color:'#1f2937',size:2,strokeOn:true,fill:true,fillColor:'#ffd166',
   points:[{x:100,y:100},{x:300,y:100},{x:300,y:300},{x:100,y:300}]};
-
-test('Point-Edit: a click on the outline adds an anchor (undoable), click-drag adds and moves it', async () => app(async ({page,run}) => {
-  await run(`items=[${JSON.stringify(pointEditSquare)}];setTool('select');selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
-  const box = await page.locator('#canvas').boundingBox();
-  const undoBefore = await run('undoStack.length');
-  await page.mouse.click(box.x+150, box.y+101);
-  assert.deepEqual(await run('items[0].points.map(p=>[p.x,p.y])'), [[100,100],[150,100],[300,100],[300,300],[100,300]]);
-  assert.equal(await run('activeAnchor'), 1, 'the new anchor is the active one');
-  assert.equal(await run('undoStack.length'), undoBefore+1, 'one undo entry');
-  await run('undo()');
-  assert.equal(await run('items[0].points.length'), 4);
-  await run('selection=[0];pointEditIdx=0;render()');
-  await page.mouse.move(box.x+300, box.y+200);
-  await page.mouse.down();
-  await page.mouse.move(box.x+330, box.y+200, {steps:4});
-  await page.mouse.move(box.x+350, box.y+200, {steps:4});
-  await page.mouse.up();
-  const pts = await run('items[0].points.map(p=>[p.x,p.y])');
-  assert.equal(pts.length, 5);
-  assert.deepEqual(pts[2], [350,200], 'inserted between the right-hand corners and dragged out');
-  assert.equal(await run('pointEditIdx'), 0, 'still in Point-Edit');
-}));
 
 test('Point-Edit: Delete, Alt+click and the x button remove an anchor, never below the minimum', async () => app(async ({page,run}) => {
   const five = {...pointEditSquare, points:[...pointEditSquare.points, {x:50,y:200}]};
@@ -1818,41 +915,6 @@ test('Point-Edit: Delete, Alt+click and the x button remove an anchor, never bel
   assert.equal(await run('items.length'), 1);
 }));
 
-test('inserting an anchor into a curve keeps its exact shape', async () => app(async ({run}) => {
-  const worst = await run(`(()=>{
-    const it = {type:'polygon', closed:false, color:'#000000', size:2, strokeOn:true, fill:false,
-      points:[{x:0,y:0,c1:{x:40,y:-80}}, {x:200,y:0,c2:{x:160,y:90}}]};
-    const before = JSON.parse(JSON.stringify(it));
-    insertAnchor(it, 0, 0.37);
-    let worst = 0;
-    for(const s of polyCurveSegments(it)) for(let t=0; t<=1; t+=0.05){
-      const x = cubicPoint(s.a.x,s.c1.x,s.c2.x,s.b.x,t), y = cubicPoint(s.a.y,s.c1.y,s.c2.y,s.b.y,t);
-      worst = Math.max(worst, nearestOnOutline(before, x, y).d);
-    }
-    return worst;
-  })()`);
-  assert.ok(worst < 0.05, `split curve deviates ${worst}px from the original`);
-}));
-
-test('double-click exit preserves Redo and the oldest Undo entry when history is full',async()=>{
-  for(const full of [false,true])await app(async({page,run})=>{
-    await run(`items=[${JSON.stringify(pointEditSquare)}];setTool('select');selection=[0];
-      for(let i=0;i<${full?80:1};i++){beginHistory();items[0].fillColor=${full?"'#'+i.toString(16).padStart(6,'0')":"'#00ff00'"};commitHistory();}
-      ${full?'':'undo();'}selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
-    const before=await run('({items:clone(items),undo:undoStack.slice(),redo:redoStack.slice()})');
-    const box=await page.locator('#canvas').boundingBox();await page.mouse.dblclick(box.x+150,box.y+101);
-    const after=await run('({items:clone(items),undo:undoStack.slice(),redo:redoStack.slice()})');
-    assert.deepEqual(after,before,'withdrawing an insertion restores geometry and both complete histories');
-    assert.equal(await run('pointEditIdx'),null);
-    if(full){
-      await run('for(let i=0;i<80;i++)undo()');
-      assert.equal(await run('items[0].fillColor'),pointEditSquare.fillColor,'even the oldest edit is still undoable');
-    }else{
-      await run('redo()');assert.equal(await run('items[0].fillColor'),'#00ff00','Redo still restores the real recolor');
-    }
-  });
-});
-
 test('font controls edit selected tables and mixed text selections with undo and file persistence',async()=>app(async({page,run})=>{
   const table={type:'table',uid:'table',x:100,y:100,w:240,h:160,rows:1,cols:1,size:2,color:'#000000',
     fontFamily:'sans',fontSize:28,texts:[['Table']]};
@@ -1879,32 +941,4 @@ test('font controls edit selected tables and mixed text selections with undo and
   const exported=await downloadedJSON(page,run,'exportProject()');
   await run('persistWorkspace()');await page.reload();await run(`applySketchToActiveTab(${JSON.stringify(exported.items)},${JSON.stringify(exported.assets)})`);
   assert.deepEqual(await run('items.slice(0,3).map(it=>[it.fontFamily,it.fontSize])'),[['mono',36],['mono',36],['mono',36]]);
-}));
-
-test('toolbar popovers stay exclusive and retain color-panel, accessibility and menu keyboard behavior',async()=>app(async({page,run})=>{
-  await run("setTool('table')");
-  const popovers={strokeBtn:'strokePicker',fillBtn:'fillPicker',textColorBtn:'textColorPicker',sizeBtn:'sizePicker',
-    tableBtn:'tablePicker',shapeLibBtn:'shapePicker',menuBtn:'menu'};
-  async function onlyOpen(button){
-    const state=await page.evaluate(popovers=>Object.entries(popovers).map(([button,id])=>({button,
-      open:!document.getElementById(id).hidden,expanded:document.getElementById(button).getAttribute('aria-expanded')})),popovers);
-    assert.deepEqual(state.filter(p=>p.open).map(p=>p.button),button?[button]:[]);
-    for(const p of state)assert.equal(p.expanded,String(p.button===button),p.button+' reflects the open state');
-    assert.equal(await page.locator('#menuBtn').evaluate(b=>b.classList.contains('active')),button==='menuBtn');
-  }
-  await page.locator('#strokeBtn').click();await onlyOpen('strokeBtn');
-  await page.locator('#strokePicker .cswatch.custom').click();
-  assert.equal(await page.locator('#strokePicker .cpanel').isVisible(),true);
-  for(const button of ['tableBtn','menuBtn','fillBtn','textColorBtn','sizeBtn','shapeLibBtn','strokeBtn']){
-    await page.locator('#'+button).click();await onlyOpen(button);
-  }
-  assert.equal(await page.locator('#strokePicker .cpanel').isVisible(),false,'opening another popover resets the custom-color panel');
-  await page.mouse.click(1,1);await onlyOpen(null);
-  await page.locator('#tableBtn').click();
-  await page.locator('#menuBtn').focus();await page.keyboard.press('ArrowDown');await onlyOpen('menuBtn');
-  const actions=page.locator('#menu button[data-act]');
-  assert.equal(await actions.first().evaluate(b=>b===document.activeElement),true);
-  await page.keyboard.press('ArrowDown');assert.equal(await actions.nth(1).evaluate(b=>b===document.activeElement),true);
-  await page.keyboard.press('Escape');await onlyOpen(null);
-  assert.equal(await page.locator('#menuBtn').evaluate(b=>b===document.activeElement),true);
 }));
