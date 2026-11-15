@@ -15,12 +15,16 @@ concurrency:
 
 jobs:
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        engine: [chromium, webkit]
+        include:
+          - engine: chromium
+            os: ubuntu-latest
+          - engine: webkit
+            os: macos-latest
     steps:
       - name: Check out the tested version
         uses: actions/checkout@v7

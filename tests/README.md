@@ -8,7 +8,8 @@ npm test
 BROWSER_ENGINE=webkit npm test
 ```
 
-CI runs these commands with two files at a time. To check a specific change:
+CI runs these commands with two files at a time: Chromium on Linux and WebKit on macOS
+to match the Safari platform. To check a specific change:
 
 ```sh
 node --test tests/workspace-storage.test.cjs
