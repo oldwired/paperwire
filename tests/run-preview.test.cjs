@@ -89,7 +89,6 @@ test('Preview isolates scalar, text and dataset edits, permits result downloads,
   const before=await sourceState(run),saved=await run('readSavedWorkspace()');
   const frame=await preview(page);
   await readerText(frame,0,'50');await readerText(frame,3,'Original');
-  if(process.env.BROWSER_ENGINE!=='webkit')await page.screenshot({path:'/private/tmp/simplecanvas-run-preview.png'});
   assert.match(await page.locator('#runPreviewPanel').textContent(),/Preview changes are discarded when you return to editing\./);
   const sandbox=(await page.locator('#runPreviewFrame').getAttribute('sandbox')).split(/\s+/);
   assert.ok(sandbox.includes('allow-scripts'));assert.ok(sandbox.includes('allow-downloads'));assert.ok(!sandbox.includes('allow-same-origin'));
